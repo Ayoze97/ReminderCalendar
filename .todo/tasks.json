@@ -1,0 +1,112 @@
+[
+  {
+    "id": "TASK_1",
+    "priority": "MEDIUM",
+    "tags": [],
+    "title": "Cambiar definitivamente la forma de los colores",
+    "description": "",
+    "status": "TODO",
+    "date": {
+      "date": {
+        "year": 2026,
+        "month": 2,
+        "day": 20
+      },
+      "time": {
+        "hour": 14,
+        "minute": 11,
+        "second": 2,
+        "nano": 217668000
+      }
+    },
+    "isImported": false
+  },
+  {
+    "id": "TASK_5",
+    "priority": "HIGH",
+    "tags": [],
+    "title": "Añadir horarios",
+    "description": "",
+    "status": "IN_PROGRESS",
+    "date": {
+      "date": {
+        "year": 2026,
+        "month": 2,
+        "day": 20
+      },
+      "time": {
+        "hour": 14,
+        "minute": 12,
+        "second": 11,
+        "nano": 456697000
+      }
+    },
+    "isImported": false
+  },
+  {
+    "id": "TASK_8",
+    "priority": "HIGH",
+    "tags": [],
+    "title": "Añadir posibilidad de crear eventos",
+    "description": "",
+    "status": "IN_PROGRESS",
+    "date": {
+      "date": {
+        "year": 2026,
+        "month": 2,
+        "day": 20
+      },
+      "time": {
+        "hour": 14,
+        "minute": 12,
+        "second": 57,
+        "nano": 584732400
+      }
+    },
+    "isImported": false
+  },
+  {
+    "id": "TASK_12",
+    "priority": "HIGH",
+    "tags": [],
+    "title": "Sincronizar eventos con GCal",
+    "description": "",
+    "status": "TODO",
+    "date": {
+      "date": {
+        "year": 2026,
+        "month": 2,
+        "day": 20
+      },
+      "time": {
+        "hour": 14,
+        "minute": 13,
+        "second": 13,
+        "nano": 600879600
+      }
+    },
+    "isImported": false
+  },
+  {
+    "id": "TASK_17",
+    "priority": "HIGH",
+    "tags": [],
+    "title": "Añadir opcion para compartir con un texto predifinido",
+    "description": "",
+    "status": "TODO",
+    "date": {
+      "date": {
+        "year": 2026,
+        "month": 2,
+        "day": 20
+      },
+      "time": {
+        "hour": 14,
+        "minute": 14,
+        "second": 10,
+        "nano": 608916100
+      }
+    },
+    "isImported": false
+  }
+]
