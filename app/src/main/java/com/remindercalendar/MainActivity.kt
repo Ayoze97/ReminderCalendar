@@ -1,11 +1,18 @@
 package com.remindercalendar
 
+import android.Manifest
 import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,9 +38,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -71,7 +80,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
@@ -120,6 +132,8 @@ fun MainApp(
     val buttonsTextColor by settingsViewModel.buttonsTextColor.collectAsState()
     val timeRanges by settingsViewModel.timeRanges.collectAsState()
     val events by eventViewModel.events.collectAsState()
+    val reminderMessage by settingsViewModel.reminderMessage.collectAsState()
+    val dateFormat by settingsViewModel.dateFormat.collectAsState()
 
     val activity = LocalContext.current as? Activity
     if (activity != null) {
@@ -139,6 +153,8 @@ fun MainApp(
             buttonsTextColor = buttonsTextColor,
             timeRanges = timeRanges,
             events = events,
+            reminderMessage = reminderMessage,
+            dateFormat = dateFormat,
             onSettingsClick = { currentScreen = Screen.SETTINGS },
             cambiarPeriodo = ::cambiarPeriodo,
             onAddEvent = { eventViewModel.addEvent(it) },
@@ -154,6 +170,8 @@ fun MainApp(
             headerTextColor = headerTextColor,
             buttonsTextColor = buttonsTextColor,
             timeRanges = timeRanges,
+            reminderMessage = reminderMessage,
+            dateFormat = dateFormat,
             onCalendarNameChange = { settingsViewModel.setCalendarName(it) },
             onHeaderColorChange = { settingsViewModel.setHeaderColor(it) },
             onButtonsColorChange = { settingsViewModel.setButtonsColor(it) },
@@ -161,6 +179,8 @@ fun MainApp(
             onHeaderTextColorChange = { settingsViewModel.setHeaderTextColor(it) },
             onButtonsTextColorChange = { settingsViewModel.setButtonsTextColor(it) },
             onTimeRangesChange = { settingsViewModel.setTimeRanges(it) },
+            onReminderMessageChange = { settingsViewModel.setReminderMessage(it) },
+            onDateFormatChange = { settingsViewModel.setDateFormat(it) },
             onBack = { currentScreen = Screen.CALENDAR }
         )
     }
@@ -177,6 +197,8 @@ fun CalendarScreen(
     buttonsTextColor: Color,
     timeRanges: List<TimeRange>,
     events: List<Event>,
+    reminderMessage: String,
+    dateFormat: String,
     onSettingsClick: () -> Unit,
     cambiarPeriodo: (LocalDate, CalendarView, Int) -> LocalDate,
     onAddEvent: (Event) -> Unit,
@@ -367,10 +389,10 @@ fun CalendarScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val mesActual = meses[fechaSeleccionada.monthValue - 1]
-                            val anioActual = fechaSeleccionada.year
+                            val añoActual = fechaSeleccionada.year
 
                             Text(
-                                text = "$mesActual $anioActual",
+                                text = "$mesActual $añoActual",
                                 style = MaterialTheme.typography.titleLarge,
                                 color = buttonsTextColor
                             )
@@ -473,6 +495,8 @@ fun CalendarScreen(
                         TimeSlotList(
                             timeRanges = timeRanges,
                             events = eventsForSelectedDate,
+                            reminderMessage = reminderMessage,
+                            dateFormat = dateFormat,
                             onTimeSelected = { time -> showEventDialogForTime = time },
                             onEventSelected = { event -> editingEvent = event }
                         )
@@ -526,6 +550,8 @@ fun SettingsScreen(
     headerTextColor: Color,
     buttonsTextColor: Color,
     timeRanges: List<TimeRange>,
+    reminderMessage: String,
+    dateFormat: String,
     onCalendarNameChange: (String) -> Unit,
     onHeaderColorChange: (Color) -> Unit,
     onButtonsColorChange: (Color) -> Unit,
@@ -533,9 +559,13 @@ fun SettingsScreen(
     onHeaderTextColorChange: (Color) -> Unit,
     onButtonsTextColorChange: (Color) -> Unit,
     onTimeRangesChange: (List<TimeRange>) -> Unit,
+    onReminderMessageChange: (String) -> Unit,
+    onDateFormatChange: (String) -> Unit,
     onBack: () -> Unit
 ) {
     var showNameDialog by remember { mutableStateOf(false) }
+    var showReminderMessageDialog by remember { mutableStateOf(false) }
+    var showDateFormatDialog by remember { mutableStateOf(false) }
     var colorToEdit by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     var showTextColorDialog by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     var isCurrentDayColor by remember { mutableStateOf(false) }
@@ -548,6 +578,28 @@ fun SettingsScreen(
             onConfirm = {
                 onCalendarNameChange(it)
                 showNameDialog = false
+            }
+        )
+    }
+
+    if (showReminderMessageDialog) {
+        EditReminderMessageDialog(
+            currentMessage = reminderMessage,
+            onDismiss = { showReminderMessageDialog = false },
+            onConfirm = {
+                onReminderMessageChange(it)
+                showReminderMessageDialog = false
+            }
+        )
+    }
+
+    if (showDateFormatDialog) {
+        EditDateFormatDialog(
+            currentFormat = dateFormat,
+            onDismiss = { showDateFormatDialog = false },
+            onConfirm = {
+                onDateFormatChange(it)
+                showDateFormatDialog = false
             }
         )
     }
@@ -616,6 +668,38 @@ fun SettingsScreen(
             ) {
                 Text("Nombre del calendario", style = MaterialTheme.typography.titleMedium)
                 Text(calendarName, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showReminderMessageDialog = true }
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Mensaje de recordatorio", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Editar mensaje de recordatorio"
+                )
+            }
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showDateFormatDialog = true }
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Formato de fecha", style = MaterialTheme.typography.titleMedium)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Editar formato de fecha"
+                )
             }
             HorizontalDivider()
 
@@ -738,6 +822,106 @@ fun SettingsScreen(
 }
 
 @Composable
+fun EditDateFormatDialog(
+    currentFormat: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(currentFormat) }
+    var preview by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+
+    LaunchedEffect(text) {
+        try {
+            preview = LocalDate.now().format(DateTimeFormatter.ofPattern(text))
+            isError = false
+        } catch (e: IllegalArgumentException) {
+            preview = "Formato inválido"
+            isError = true
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar formato de fecha") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Formato") },
+                    isError = isError
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Vista previa: $preview")
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Ej: dd/MM/yyyy, EEEE d MMMM, ...", style = MaterialTheme.typography.bodySmall)
+
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(text) }, enabled = !isError) {
+                Text("Confirmar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun EditReminderMessageDialog(
+    currentMessage: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(currentMessage)) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar mensaje de recordatorio") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = textFieldValue,
+                    onValueChange = { textFieldValue = it },
+                    label = { Text("Mensaje") }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row {
+                    TextButton(onClick = {
+                        val newText = textFieldValue.text.replaceRange(textFieldValue.selection.start, textFieldValue.selection.end, "{fecha}")
+                        textFieldValue = TextFieldValue(newText)
+                    }) {
+                        Text("Insertar Fecha")
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        val newText = textFieldValue.text.replaceRange(textFieldValue.selection.start, textFieldValue.selection.end, "{hora}")
+                        textFieldValue = TextFieldValue(newText)
+                    }) {
+                        Text("Insertar Hora")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(textFieldValue.text) }) {
+                Text("Confirmar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
 fun EventDialog(
     event: Event?,
     time: LocalTime?,
@@ -750,6 +934,37 @@ fun EventDialog(
     val initialTime = event?.time ?: time ?: LocalTime.now()
     var eventTime by remember { mutableStateOf(initialTime.format(DateTimeFormatter.ofPattern("HH:mm"))) }
     var isTimeValid by remember { mutableStateOf(true) }
+
+    val context = LocalContext.current
+    val contactsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickContact(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                val cursor = context.contentResolver.query(it, null, null, null, null)
+                cursor?.let {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
+                        if (nameIndex != -1) {
+                            person = it.getString(nameIndex)
+                        }
+                    }
+                    cursor.close()
+                }
+            }
+        }
+    )
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted: Boolean ->
+            if (isGranted) {
+                contactsLauncher.launch(null)
+            } else {
+                // Handle permission denial
+            }
+        }
+    )
+
 
     fun validateTime(time: String): Boolean {
         return try {
@@ -769,7 +984,29 @@ fun EventDialog(
             Column {
                 OutlinedTextField(value = eventName, onValueChange = { eventName = it }, label = { Text("Nombre del evento") })
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = person, onValueChange = { person = it }, label = { Text("Persona") })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = person,
+                        onValueChange = { person = it },
+                        label = { Text("Persona") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = {
+                        when (PackageManager.PERMISSION_GRANTED) {
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.READ_CONTACTS
+                            ) -> {
+                                contactsLauncher.launch(null)
+                            }
+                            else -> {
+                                permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                            }
+                        }
+                    }) {
+                        Icon(painterResource(id = R.drawable.contact_icon), contentDescription = "Seleccionar contacto")
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(value = eventTime, onValueChange = { eventTime = it; isTimeValid = validateTime(it) }, label = { Text("Hora") }, isError = !isTimeValid)
             }
@@ -1157,6 +1394,8 @@ fun VistaMensual(
 fun TimeSlotList(
     timeRanges: List<TimeRange>,
     events: List<Event>,
+    reminderMessage: String,
+    dateFormat: String,
     onTimeSelected: (LocalTime) -> Unit,
     onEventSelected: (Event) -> Unit
 ) {
@@ -1182,7 +1421,11 @@ fun TimeSlotList(
     val firstHalf = timeSlots.take(halfSize)
     val secondHalf = timeSlots.drop(halfSize)
 
-    Row(modifier = Modifier.padding(horizontal = 16.dp)) {
+    Row(modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+        ) {
         Column(modifier = Modifier.weight(1f)) {
             firstHalf.forEach { time ->
                 val eventsForTime = events.filter { it.time == time }
@@ -1194,13 +1437,39 @@ fun TimeSlotList(
                             .padding(vertical = 4.dp)
                     )
                     eventsForTime.forEach { event ->
-                        Text(
-                            text = " • ${event.name} (${event.person})",
+                        Row(
                             modifier = Modifier
-                                .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                                .fillMaxWidth()
-                                .clickable { onEventSelected(event) }
-                        )
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = {
+                                val message = reminderMessage
+                                    .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
+                                    .replace("{hora}", event.time.format(formatter))
+                                val sendIntent: Intent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, message)
+                                    type = "text/plain"
+                                }
+                                val shareIntent = Intent.createChooser(sendIntent, null)
+                                context.startActivity(shareIntent)
+                            },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "Recordatorio",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Text(
+                                text = "${event.name} (${event.person})",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onEventSelected(event) }
+                            )
+                        }
                     }
                 }
             }
@@ -1216,13 +1485,39 @@ fun TimeSlotList(
                             .padding(vertical = 4.dp)
                     )
                     eventsForTime.forEach { event ->
-                        Text(
-                            text = " • ${event.name} (${event.person})",
+                        Row(
                             modifier = Modifier
-                                .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                                .fillMaxWidth()
-                                .clickable { onEventSelected(event) }
-                        )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = {
+                                val message = reminderMessage
+                                    .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
+                                    .replace("{hora}", event.time.format(formatter))
+                                val sendIntent: Intent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, message)
+                                    type = "text/plain"
+                                }
+                                val shareIntent = Intent.createChooser(sendIntent, null)
+                                context.startActivity(shareIntent)
+                            },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = "Recordatorio",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Text(
+                                text = "${event.name} (${event.person})",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onEventSelected(event) }
+                            )
+                        }
                     }
                 }
             }

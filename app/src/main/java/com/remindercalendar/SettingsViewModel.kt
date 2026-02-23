@@ -115,6 +115,32 @@ class SettingsViewModel(private val settingsManager: SettingsManager) : ViewMode
             settingsManager.setTimeRanges(timeRanges)
         }
     }
+
+    val reminderMessage: StateFlow<String> = settingsManager.reminderMessageFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = "Hola, te recuerdo tu cita."
+        )
+
+    fun setReminderMessage(message: String) {
+        viewModelScope.launch {
+            settingsManager.setReminderMessage(message)
+        }
+    }
+
+    val dateFormat: StateFlow<String> = settingsManager.dateFormatFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = "dd/MM/yyyy"
+        )
+
+    fun setDateFormat(format: String) {
+        viewModelScope.launch {
+            settingsManager.setDateFormat(format)
+        }
+    }
 }
 
 class SettingsViewModelFactory(private val settingsManager: SettingsManager) : ViewModelProvider.Factory {

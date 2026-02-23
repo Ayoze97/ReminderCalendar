@@ -28,6 +28,8 @@ class SettingsManager(context: Context) {
         val HEADER_TEXT_COLOR_KEY = longPreferencesKey("header_text_color")
         val BUTTONS_TEXT_COLOR_KEY = longPreferencesKey("buttons_text_color")
         val TIME_RANGES_KEY = stringSetPreferencesKey("time_ranges")
+        val REMINDER_MESSAGE_KEY = stringPreferencesKey("reminder_message")
+        val DATE_FORMAT_KEY = stringPreferencesKey("date_format")
     }
 
     val calendarNameFlow: Flow<String> = dataStore.data.map {
@@ -127,6 +129,26 @@ class SettingsManager(context: Context) {
                 "${range.start}-${range.end}"
             }.toSet()
             it[TIME_RANGES_KEY] = rangeStrings
+        }
+    }
+
+    val reminderMessageFlow: Flow<String> = dataStore.data.map {
+        it[REMINDER_MESSAGE_KEY] ?: "Hola, te recuerdo tu cita."
+    }
+
+    suspend fun setReminderMessage(message: String) {
+        dataStore.edit {
+            it[REMINDER_MESSAGE_KEY] = message
+        }
+    }
+
+    val dateFormatFlow: Flow<String> = dataStore.data.map {
+        it[DATE_FORMAT_KEY] ?: "dd/MM/yyyy"
+    }
+
+    suspend fun setDateFormat(format: String) {
+        dataStore.edit {
+            it[DATE_FORMAT_KEY] = format
         }
     }
 }
