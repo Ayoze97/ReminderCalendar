@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalTime
@@ -25,11 +26,24 @@ class SettingsViewModel(private val settingsManager: SettingsManager) : ViewMode
         }
     }
 
+    val preferredSendMethod: StateFlow<SendMethod> = settingsManager.preferredSendMethodFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = SendMethod.SMS
+        )
+
+        fun setPreferredSendMethod(method: SendMethod) {
+        viewModelScope.launch {
+            settingsManager.setPreferredSendMethod(method)
+        }
+    }
+
     val headerColor: StateFlow<Color> = settingsManager.headerColorFlow
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = Color(0xFFD0E4F5)
+            initialValue = Color.Blue
         )
 
     fun setHeaderColor(color: Color) {
@@ -47,7 +61,7 @@ class SettingsViewModel(private val settingsManager: SettingsManager) : ViewMode
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = Color.LightGray
+            initialValue = Color.Cyan
         )
 
     fun setButtonsColor(color: Color) {
@@ -120,7 +134,14 @@ class SettingsViewModel(private val settingsManager: SettingsManager) : ViewMode
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = "Hola, te recuerdo tu cita."
+            initialValue = "Hola, te recuerdo tu cita el {fecha} a las {hora}."
+        )
+    val isDateFormatNeeded: StateFlow<Boolean> = reminderMessage
+        .map { it.contains("{fecha}") }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true
         )
 
     fun setReminderMessage(message: String) {

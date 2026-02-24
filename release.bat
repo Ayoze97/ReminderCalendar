@@ -22,4 +22,4 @@ git push origin "%VERSION_TAG%"
 
 echo Proceso completado
 
-REM release.bat "feat: Added: Reminder by configurable message and minor fixes" v0.7.0
+REM .\release.bat "Added: Option to share directly via SMS, Mail or WhatsApp using the phone number and mail saved on the imported contact and minor fixes" v0.8.0

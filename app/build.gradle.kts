@@ -71,4 +71,5 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.gson)
+    implementation("androidx.compose.material:material-icons-extended:1.7.0")
 }

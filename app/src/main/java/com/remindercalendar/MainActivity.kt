@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.provider.ContactsContract
 import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,21 +38,25 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewDay
+import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,7 +88,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -91,7 +101,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import java.util.UUID
+
 
 enum class CalendarView {
     DAY, WEEK, MONTH
@@ -101,8 +111,18 @@ enum class Screen {
     CALENDAR, SETTINGS
 }
 
+enum class SendMethod { SMS, WhatsApp, Mail }
+
 data class TimeRange(val start: LocalTime, val end: LocalTime)
-data class Event(val id: String = UUID.randomUUID().toString(), val date: LocalDate, val time: LocalTime, val name: String, val person: String)
+data class Event(
+    val id: Long = System.currentTimeMillis(),
+    val name: String,
+    val person: String,
+    val phone: String = "",
+    val email: String = "",
+    val date: LocalDate,
+    val time: LocalTime
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +154,7 @@ fun MainApp(
     val events by eventViewModel.events.collectAsState()
     val reminderMessage by settingsViewModel.reminderMessage.collectAsState()
     val dateFormat by settingsViewModel.dateFormat.collectAsState()
+    val preferredSendMethod by settingsViewModel.preferredSendMethod.collectAsState()
 
     val activity = LocalContext.current as? Activity
     if (activity != null) {
@@ -159,30 +180,40 @@ fun MainApp(
             cambiarPeriodo = ::cambiarPeriodo,
             onAddEvent = { eventViewModel.addEvent(it) },
             onUpdateEvent = { eventViewModel.updateEvent(it) },
-            onDeleteEvent = { eventViewModel.deleteEvent(it) }
+            onDeleteEvent = { eventViewModel.deleteEvent(it) },
+            preferredSendMethod = preferredSendMethod
         )
 
-        Screen.SETTINGS -> SettingsScreen(
-            calendarName = calendarName,
-            headerColor = headerColor,
-            buttonsColor = buttonsColor,
-            currentDayColor = currentDayColor,
-            headerTextColor = headerTextColor,
-            buttonsTextColor = buttonsTextColor,
-            timeRanges = timeRanges,
-            reminderMessage = reminderMessage,
-            dateFormat = dateFormat,
-            onCalendarNameChange = { settingsViewModel.setCalendarName(it) },
-            onHeaderColorChange = { settingsViewModel.setHeaderColor(it) },
-            onButtonsColorChange = { settingsViewModel.setButtonsColor(it) },
-            onCurrentDayColorChange = { settingsViewModel.setCurrentDayColor(it) },
-            onHeaderTextColorChange = { settingsViewModel.setHeaderTextColor(it) },
-            onButtonsTextColorChange = { settingsViewModel.setButtonsTextColor(it) },
-            onTimeRangesChange = { settingsViewModel.setTimeRanges(it) },
-            onReminderMessageChange = { settingsViewModel.setReminderMessage(it) },
-            onDateFormatChange = { settingsViewModel.setDateFormat(it) },
-            onBack = { currentScreen = Screen.CALENDAR }
-        )
+        Screen.SETTINGS -> {
+            BackHandler {
+                currentScreen = Screen.CALENDAR
+            }
+            SettingsScreen(
+                calendarName = calendarName,
+                headerColor = headerColor,
+                buttonsColor = buttonsColor,
+                currentDayColor = currentDayColor,
+                headerTextColor = headerTextColor,
+                buttonsTextColor = buttonsTextColor,
+                timeRanges = timeRanges,
+                reminderMessage = reminderMessage,
+                dateFormat = dateFormat,
+                onCalendarNameChange = { settingsViewModel.setCalendarName(it) },
+                onHeaderColorChange = { settingsViewModel.setHeaderColor(it) },
+                onButtonsColorChange = { settingsViewModel.setButtonsColor(it) },
+                onCurrentDayColorChange = { settingsViewModel.setCurrentDayColor(it) },
+                onHeaderTextColorChange = { settingsViewModel.setHeaderTextColor(it) },
+                onButtonsTextColorChange = { settingsViewModel.setButtonsTextColor(it) },
+                onTimeRangesChange = { settingsViewModel.setTimeRanges(it) },
+                onReminderMessageChange = { settingsViewModel.setReminderMessage(it) },
+                onDateFormatChange = { settingsViewModel.setDateFormat(it) },
+                preferredSendMethod = preferredSendMethod,
+                onPreferredSendMethodChange = { method ->
+                    settingsViewModel.setPreferredSendMethod(method)
+                },
+                onBack = { currentScreen = Screen.CALENDAR }
+            )
+        }
     }
 }
 
@@ -203,7 +234,8 @@ fun CalendarScreen(
     cambiarPeriodo: (LocalDate, CalendarView, Int) -> LocalDate,
     onAddEvent: (Event) -> Unit,
     onUpdateEvent: (Event) -> Unit,
-    onDeleteEvent: (Event) -> Unit
+    onDeleteEvent: (Event) -> Unit,
+    preferredSendMethod: SendMethod
 ) {
     var fechaSeleccionada by remember { mutableStateOf(LocalDate.now()) }
     var vistaActual by remember { mutableStateOf(CalendarView.MONTH) }
@@ -229,17 +261,24 @@ fun CalendarScreen(
                 editingEvent = null
                 showEventDialogForTime = null
             },
-            onConfirm = { eventName, person, timeString ->
-                val time = LocalTime.parse(timeString, DateTimeFormatter.ofPattern("HH:mm"))
+            onConfirm = { eventName, person, phone, email, time ->
                 if (editingEvent != null) {
-                    val updatedEvent = editingEvent!!.copy(name = eventName, person = person, time = time)
+                    val updatedEvent = editingEvent!!.copy(
+                        name = eventName,
+                        person = person,
+                        phone = phone,
+                        email = email,
+                        time = time
+                    )
                     onUpdateEvent(updatedEvent)
                 } else {
                     val newEvent = Event(
                         date = fechaSeleccionada,
                         time = time,
                         name = eventName,
-                        person = person
+                        person = person,
+                        phone = phone,
+                        email = email
                     )
                     onAddEvent(newEvent)
                 }
@@ -269,8 +308,8 @@ fun CalendarScreen(
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet {
-                Box(Modifier.fillMaxSize()) {
-                    Column {
+                Box(Modifier.fillMaxHeight()) {
+                    Column(Modifier.fillMaxHeight()) {
                         Text("Seleccionar vista", modifier = Modifier.padding(16.dp))
 
                         NavigationDrawerItem(
@@ -279,7 +318,8 @@ fun CalendarScreen(
                             onClick = {
                                 vistaActual = CalendarView.MONTH
                                 scope.launch { drawerState.close() }
-                            }
+                            },
+                            icon = { Icon(Icons.Default.DateRange, contentDescription = null) }
                         )
 
                         NavigationDrawerItem(
@@ -288,7 +328,8 @@ fun CalendarScreen(
                             onClick = {
                                 vistaActual = CalendarView.WEEK
                                 scope.launch { drawerState.close() }
-                            }
+                            },
+                            icon = { Icon(Icons.Default.ViewWeek, contentDescription = null) }
                         )
 
                         NavigationDrawerItem(
@@ -297,8 +338,19 @@ fun CalendarScreen(
                             onClick = {
                                 vistaActual = CalendarView.DAY
                                 scope.launch { drawerState.close() }
-                            }
+                            },
+                            icon = { Icon(Icons.Default.ViewDay, contentDescription = null) }
                         )
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 28.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(80.dp))
                     }
 
                     IconButton(
@@ -309,6 +361,7 @@ fun CalendarScreen(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(16.dp)
+                            .size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -498,7 +551,8 @@ fun CalendarScreen(
                             reminderMessage = reminderMessage,
                             dateFormat = dateFormat,
                             onTimeSelected = { time -> showEventDialogForTime = time },
-                            onEventSelected = { event -> editingEvent = event }
+                            onEventSelected = { event -> editingEvent = event },
+                            preferredSendMethod = preferredSendMethod
                         )
                     }
 
@@ -539,7 +593,6 @@ fun DeleteConfirmationDialog(
     )
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -561,8 +614,15 @@ fun SettingsScreen(
     onTimeRangesChange: (List<TimeRange>) -> Unit,
     onReminderMessageChange: (String) -> Unit,
     onDateFormatChange: (String) -> Unit,
+    preferredSendMethod: SendMethod,
+    onPreferredSendMethodChange: (SendMethod) -> Unit,
     onBack: () -> Unit
 ) {
+
+    BackHandler {
+        onBack()
+    }
+
     var showNameDialog by remember { mutableStateOf(false) }
     var showReminderMessageDialog by remember { mutableStateOf(false) }
     var showDateFormatDialog by remember { mutableStateOf(false) }
@@ -570,69 +630,67 @@ fun SettingsScreen(
     var showTextColorDialog by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     var isCurrentDayColor by remember { mutableStateOf(false) }
     var showTimeRangeDialog by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf(dateFormat) }
+
+    val isDateNeeded = reminderMessage.contains("{fecha}", ignoreCase = true)
+    val datePreview = remember(dateFormat) {
+        try {
+            java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(dateFormat))
+        } catch (e: Exception) {
+            "Formato inválido"
+        }
+    }
 
     if (showNameDialog) {
         EditCalendarNameDialog(
             currentName = calendarName,
             onDismiss = { showNameDialog = false },
-            onConfirm = {
-                onCalendarNameChange(it)
-                showNameDialog = false
-            }
+            onConfirm = { onCalendarNameChange(it); showNameDialog = false }
         )
     }
-
     if (showReminderMessageDialog) {
         EditReminderMessageDialog(
             currentMessage = reminderMessage,
             onDismiss = { showReminderMessageDialog = false },
-            onConfirm = {
-                onReminderMessageChange(it)
-                showReminderMessageDialog = false
-            }
+            onConfirm = { onReminderMessageChange(it); showReminderMessageDialog = false }
+        )
+    }
+    if (showDateFormatDialog) {
+        EditDateFormatDialog(
+            currentFormat = dateFormat,
+            onDismiss = { showDateFormatDialog = false },
+            onConfirm = { onDateFormatChange(it); showDateFormatDialog = false }
+        )
+    }
+    colorToEdit?.let {
+        ColorPickerDialog(
+            isCurrentDayColor = isCurrentDayColor,
+            onDismiss = { colorToEdit = null; isCurrentDayColor = false },
+            onColorSelected = { it(it); colorToEdit = null; isCurrentDayColor = false }
+        )
+    }
+    showTextColorDialog?.let {
+        TextColorDialog(
+            onDismiss = { showTextColorDialog = null },
+            onColorSelected = { it(it); showTextColorDialog = null }
+        )
+    }
+    if (showTimeRangeDialog) {
+        TimeRangeSettingsDialog(
+            initialRanges = timeRanges,
+            onDismiss = { showTimeRangeDialog = false },
+            onConfirm = { onTimeRangesChange(it); showTimeRangeDialog = false }
         )
     }
 
     if (showDateFormatDialog) {
         EditDateFormatDialog(
-            currentFormat = dateFormat,
+            currentFormat = text,
             onDismiss = { showDateFormatDialog = false },
-            onConfirm = {
-                onDateFormatChange(it)
+            onConfirm = { nuevoFormato ->
+                text = nuevoFormato // Actualiza lo que ves en la pantalla
+                // AQUÍ deberías llamar a tu función de guardar (Prefs/Database)
                 showDateFormatDialog = false
-            }
-        )
-    }
-
-    colorToEdit?.let {
-        ColorPickerDialog(
-            isCurrentDayColor = isCurrentDayColor,
-            onDismiss = { colorToEdit = null; isCurrentDayColor = false },
-            onColorSelected = {
-                it(it)
-                colorToEdit = null
-                isCurrentDayColor = false
-            }
-        )
-    }
-
-    showTextColorDialog?.let {
-        TextColorDialog(
-            onDismiss = { showTextColorDialog = null },
-            onColorSelected = {
-                it(it)
-                showTextColorDialog = null
-            }
-        )
-    }
-
-    if (showTimeRangeDialog) {
-        TimeRangeSettingsDialog(
-            initialRanges = timeRanges,
-            onDismiss = { showTimeRangeDialog = false },
-            onConfirm = {
-                onTimeRangesChange(it)
-                showTimeRangeDialog = false
             }
         )
     }
@@ -643,10 +701,7 @@ fun SettingsScreen(
                 title = { Text("Ajustes") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                     }
                 }
             )
@@ -657,7 +712,9 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -667,7 +724,20 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Nombre del calendario", style = MaterialTheme.typography.titleMedium)
-                Text(calendarName, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(calendarName, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showTimeRangeDialog = true }
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Rango horario", style = MaterialTheme.typography.titleMedium)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
             }
             HorizontalDivider()
 
@@ -679,33 +749,118 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Mensaje de recordatorio", style = MaterialTheme.typography.titleMedium)
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Editar mensaje de recordatorio"
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Mensaje de recordatorio", style = MaterialTheme.typography.titleMedium)
+                    Text(reminderMessage, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
             }
-            HorizontalDivider()
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showDateFormatDialog = true }
-                    .padding(vertical = 16.dp),
+                    .padding(start = 24.dp)
+                    .clickable(enabled = isDateNeeded) { showDateFormatDialog = true }
+                    .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Formato de fecha", style = MaterialTheme.typography.titleMedium)
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Editar formato de fecha"
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Formato de fecha",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isDateNeeded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                    if (isDateNeeded) {
+                        Text(
+                            text = text.ifBlank { "dd/MM/yyyy" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    } else {
+                        Text(
+                            text = "No se usa {fecha} en el mensaje",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                }
+                if (isDateNeeded) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(20.dp))
+                }
+            }
+            HorizontalDivider()
+
+            var expanded by remember { mutableStateOf(false) }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Método de envío preferido",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = when(preferredSendMethod) {
+                        SendMethod.WhatsApp -> "WhatsApp"
+                        SendMethod.SMS -> "SMS"
+                        SendMethod.Mail -> "Correo Electrónico"
+                    },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Selecciona un método") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier
+                        .menuAnchor(MenuAnchorType.PrimaryEditable, enabled = true)
+                        .fillMaxWidth()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    SendMethod.entries.forEach { method ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = when(method) {
+                                        SendMethod.WhatsApp -> "WhatsApp"
+                                        SendMethod.SMS -> "SMS"
+                                        SendMethod.Mail -> "Correo Electrónico"
+                                    }
+                                )
+                            },
+                            onClick = {
+                                onPreferredSendMethodChange(method)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
+                }
+            }
+
+            if (preferredSendMethod == SendMethod.Mail) {
+                Text(
+                    text = "Nota: El contacto debe tener un correo guardado.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                 )
             }
+            Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
 
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Colores",
+                text = "Personalización Visual",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -716,33 +871,33 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { colorToEdit = onHeaderColorChange }
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Color de encabezado", style = MaterialTheme.typography.titleMedium)
                     Surface(
-                        shape = CircleShape,
                         modifier = Modifier.size(24.dp),
+                        shape = CircleShape,
                         color = headerColor,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        border = BorderStroke(1.dp, Color.LightGray)
                     ) {}
                 }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp)
+                        .padding(start = 24.dp)
                         .clickable { showTextColorDialog = onHeaderTextColorChange }
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Color texto encabezado", style = MaterialTheme.typography.bodyLarge)
                     Surface(
-                        shape = CircleShape,
                         modifier = Modifier.size(24.dp),
+                        shape = CircleShape,
                         color = headerTextColor,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        border = BorderStroke(1.dp, Color.LightGray)
                     ) {}
                 }
             }
@@ -753,33 +908,33 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { colorToEdit = onButtonsColorChange }
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Color de botones", style = MaterialTheme.typography.titleMedium)
                     Surface(
-                        shape = CircleShape,
                         modifier = Modifier.size(24.dp),
+                        shape = CircleShape,
                         color = buttonsColor,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        border = BorderStroke(1.dp, Color.LightGray)
                     ) {}
                 }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp)
+                        .padding(start = 24.dp)
                         .clickable { showTextColorDialog = onButtonsTextColorChange }
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Color texto botones", style = MaterialTheme.typography.bodyLarge)
                     Surface(
-                        shape = CircleShape,
                         modifier = Modifier.size(24.dp),
+                        shape = CircleShape,
                         color = buttonsTextColor,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        border = BorderStroke(1.dp, Color.LightGray)
                     ) {}
                 }
             }
@@ -793,29 +948,13 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Color del día actual y seleccionado", style = MaterialTheme.typography.titleMedium)
+                Text("Color día seleccionado y actual", style = MaterialTheme.typography.titleMedium)
                 Surface(
-                    shape = CircleShape,
                     modifier = Modifier.size(24.dp),
+                    shape = CircleShape,
                     color = currentDayColor,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    border = BorderStroke(1.dp, Color.LightGray)
                 ) {}
-            }
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showTimeRangeDialog = true }
-                    .padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Rango horario", style = MaterialTheme.typography.titleMedium)
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowRight,
-                    contentDescription = "Editar rango horario"
-                )
             }
         }
     }
@@ -828,18 +967,16 @@ fun EditDateFormatDialog(
     onConfirm: (String) -> Unit
 ) {
     var text by remember { mutableStateOf(currentFormat) }
-    var preview by remember { mutableStateOf("") }
-    var isError by remember { mutableStateOf(false) }
 
-    LaunchedEffect(text) {
+    val preview = remember(text) {
         try {
-            preview = LocalDate.now().format(DateTimeFormatter.ofPattern(text))
-            isError = false
-        } catch (e: IllegalArgumentException) {
-            preview = "Formato inválido"
-            isError = true
+            val pattern = if (text.isBlank()) "dd/MM/yyyy" else text
+            LocalDate.now().format(DateTimeFormatter.ofPattern(pattern))
+        } catch (e: Exception) {
+            null
         }
     }
+    val isError = preview == null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -850,17 +987,46 @@ fun EditDateFormatDialog(
                     value = text,
                     onValueChange = { text = it },
                     label = { Text("Formato") },
-                    isError = isError
+                    isError = isError,
+                    placeholder = { Text("dd/MM/yyyy") },
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = {
+                        if (isError) {
+                            Text("Caracteres de hora no válidos (H, m, s...)")
+                        }
+                    }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Vista previa: $preview")
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Ej: dd/MM/yyyy, EEEE d MMMM, ...", style = MaterialTheme.typography.bodySmall)
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Vista previa:",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = preview ?: "Formato inválido para fecha",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Ej: dd/MM/yyyy, EEEE d MMMM",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }, enabled = !isError) {
+            TextButton(
+                onClick = {
+                    val finalFormat = text.ifBlank { "dd/MM/yyyy" }
+                    onConfirm(finalFormat)
+                },
+                enabled = !isError
+            ) {
                 Text("Confirmar")
             }
         },
@@ -926,7 +1092,7 @@ fun EventDialog(
     event: Event?,
     time: LocalTime?,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit,
+    onConfirm: (String, String, String, String, LocalTime) -> Unit,
     onDelete: (Event) -> Unit
 ) {
     var eventName by remember { mutableStateOf(event?.name ?: "") }
@@ -934,25 +1100,67 @@ fun EventDialog(
     val initialTime = event?.time ?: time ?: LocalTime.now()
     var eventTime by remember { mutableStateOf(initialTime.format(DateTimeFormatter.ofPattern("HH:mm"))) }
     var isTimeValid by remember { mutableStateOf(true) }
+    var phone by remember { mutableStateOf(event?.phone ?: "") }
+    var email by remember { mutableStateOf(event?.email ?: "") }
 
     val context = LocalContext.current
     val contactsLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickContact(),
-        onResult = { uri: Uri? ->
-            uri?.let {
-                val cursor = context.contentResolver.query(it, null, null, null, null)
-                cursor?.let {
-                    if (it.moveToFirst()) {
-                        val nameIndex = it.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
-                        if (nameIndex != -1) {
-                            person = it.getString(nameIndex)
+        contract = ActivityResultContracts.PickContact()
+    ) { uri ->
+        uri?.let { contactUri ->
+            val projection = arrayOf(
+                ContactsContract.Contacts._ID,
+                ContactsContract.Contacts.DISPLAY_NAME
+            )
+
+            context.contentResolver.query(contactUri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
+                    val name = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME))
+
+                    // 1. Actualizamos el nombre
+                    person = name
+
+                    // 2. Buscamos el TELÉFONO
+                    context.contentResolver.query(
+                        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        null,
+                        "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
+                        arrayOf(id),
+                        null
+                    )?.use { phoneCursor ->
+                        if (phoneCursor.moveToFirst()) {
+                            val number = phoneCursor.getString(
+                                phoneCursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                            )
+                            // Limpiamos el número para evitar errores en WhatsApp (quitamos espacios y símbolos)
+                            phone = number.replace(Regex("[^0-9]"), "")
+                        } else {
+                            phone = "" // Limpiar si el contacto no tiene teléfono
                         }
                     }
-                    cursor.close()
+
+                    // 3. Buscamos el EMAIL
+                    context.contentResolver.query(
+                        ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                        null,
+                        "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
+                        arrayOf(id),
+                        null
+                    )?.use { emailCursor ->
+                        if (emailCursor.moveToFirst()) {
+                            val mail = emailCursor.getString(
+                                emailCursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS)
+                            )
+                            email = mail
+                        } else {
+                            email = "" // Limpiar si el contacto no tiene email
+                        }
+                    }
                 }
             }
         }
-    )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -960,11 +1168,10 @@ fun EventDialog(
             if (isGranted) {
                 contactsLauncher.launch(null)
             } else {
-                // Handle permission denial
+                //
             }
         }
     )
-
 
     fun validateTime(time: String): Boolean {
         return try {
@@ -1009,11 +1216,42 @@ fun EventDialog(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(value = eventTime, onValueChange = { eventTime = it; isTimeValid = validateTime(it) }, label = { Text("Hora") }, isError = !isTimeValid)
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Teléfono (WhatsApp/SMS)") },
+                    placeholder = { Text("Ej: 34600112233") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Correo electrónico") },
+                    placeholder = { Text("ejemplo@correo.com") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(eventName, person, eventTime) },
+                onClick = {
+                    val cleanTime = eventTime.trim()
+
+                    val parsedTime = try {
+                        LocalTime.parse(cleanTime, DateTimeFormatter.ofPattern("HH:mm"))
+                    } catch (e: Exception) {
+                        try {
+                            LocalTime.parse(cleanTime, DateTimeFormatter.ofPattern("H:mm"))
+                        } catch (e2: Exception) {
+                            LocalTime.now()
+                        }
+                    }
+
+                    onConfirm(eventName, person, phone, email, parsedTime)
+                },
                 enabled = isConfirmEnabled
             ) {
                 Text(if (event != null) "Guardar" else "Confirmar")
@@ -1080,19 +1318,31 @@ fun TimeRangeSettingsDialog(
                 if (isSplit) {
                     Text("Mañana", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier.weight(1f).padding(end = 4.dp), isError = !isRange1StartValid)
-                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier.weight(1f).padding(start = 4.dp), isError = !isRange1EndValid)
+                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 4.dp), isError = !isRange1StartValid)
+                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 4.dp), isError = !isRange1EndValid)
                     }
                     Text("Tarde", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        OutlinedTextField(value = range2Start, onValueChange = { range2Start = it; isRange2StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier.weight(1f).padding(end = 4.dp), isError = !isRange2StartValid)
-                        OutlinedTextField(value = range2End, onValueChange = { range2End = it; isRange2EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier.weight(1f).padding(start = 4.dp), isError = !isRange2EndValid)
+                        OutlinedTextField(value = range2Start, onValueChange = { range2Start = it; isRange2StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 4.dp), isError = !isRange2StartValid)
+                        OutlinedTextField(value = range2End, onValueChange = { range2End = it; isRange2EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 4.dp), isError = !isRange2EndValid)
                     }
                 } else {
                     Text("Horario Completo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier.weight(1f).padding(end = 4.dp), isError = !isRange1StartValid)
-                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier.weight(1f).padding(start = 4.dp), isError = !isRange1EndValid)
+                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 4.dp), isError = !isRange1StartValid)
+                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 4.dp), isError = !isRange1EndValid)
                     }
                 }
             }
@@ -1180,22 +1430,32 @@ fun ColorPickerDialog(
         text = {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
+                modifier = Modifier.fillMaxWidth(),
                 content = {
                     items(colors) { color ->
-                        Surface(
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .size(48.dp)
-                                .clickable { onColorSelected(color) },
-                            color = color,
-                            border = if (color == Color.White) BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null
-                        ) {}
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(8.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .aspectRatio(1f)
+                                    .clickable { onColorSelected(color) },
+                                color = color,
+                                border = if (color == Color.White) BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null
+                            ) {}
+                        }
                     }
                 }
             )
         },
-        confirmButton = { }
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
     )
 }
 
@@ -1397,7 +1657,8 @@ fun TimeSlotList(
     reminderMessage: String,
     dateFormat: String,
     onTimeSelected: (LocalTime) -> Unit,
-    onEventSelected: (Event) -> Unit
+    onEventSelected: (Event) -> Unit,
+    preferredSendMethod: SendMethod
 ) {
     val context = LocalContext.current
     val is24HourFormat = DateFormat.is24HourFormat(context)
@@ -1405,16 +1666,18 @@ fun TimeSlotList(
         DateTimeFormatter.ofPattern(if (is24HourFormat) "HH:mm" else "h:mm a")
     }
 
-    val timeSlots = remember(timeRanges) {
-        timeRanges.flatMap { range ->
+    val timeSlots = remember(timeRanges, events) {
+        val baseSlots = timeRanges.flatMap { range ->
             val slots = mutableListOf<LocalTime>()
             var currentTime = range.start
-            while (currentTime.isBefore(range.end)) {
+            while (!currentTime.isAfter(range.end)) {
                 slots.add(currentTime)
                 currentTime = currentTime.plusMinutes(30)
             }
             slots
-        }.sorted()
+        }
+        val eventTimes = events.map { it.time }
+        (baseSlots + eventTimes).distinct().sorted()
     }
 
     val halfSize = (timeSlots.size + 1) / 2
@@ -1433,8 +1696,13 @@ fun TimeSlotList(
                     Text(
                         text = time.format(formatter),
                         modifier = Modifier
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTimeSelected(time) }
-                            .padding(vertical = 4.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onTimeSelected(time) }
+                            .padding(vertical = 4.dp),
+                        fontWeight = if (time.minute == 0) FontWeight.Bold else FontWeight.Normal,
+                        color = if (time.minute == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     eventsForTime.forEach { event ->
                         Row(
@@ -1443,18 +1711,59 @@ fun TimeSlotList(
                                 .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = {
-                                val message = reminderMessage
-                                    .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
-                                    .replace("{hora}", event.time.format(formatter))
-                                val sendIntent: Intent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, message)
-                                    type = "text/plain"
-                                }
-                                val shareIntent = Intent.createChooser(sendIntent, null)
-                                context.startActivity(shareIntent)
-                            },
+                            IconButton(
+                                onClick = {
+                                    val message = reminderMessage
+                                        .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
+                                        .replace("{hora}", event.time.format(formatter))
+
+                                    // Asumiendo que 'event' tiene campos 'phone' y 'email'
+                                    // Si no los tiene, tendrás que añadirlos a tu clase Event o buscarlos
+                                    val phoneNumber = event.phone // Ejemplo: "34600000000"
+                                    val emailAddress = event.email // Ejemplo: "correo@ejemplo.com"
+
+                                    val intent = when (preferredSendMethod) {
+                                        SendMethod.WhatsApp -> {
+                                            Intent(Intent.ACTION_VIEW).apply {
+                                                // WhatsApp requiere el número con prefijo y sin símbolos (+ o espacios)
+                                                val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
+                                                data = Uri.parse(url)
+                                            }
+                                        }
+                                        SendMethod.SMS -> {
+                                            Intent(Intent.ACTION_SENDTO).apply {
+                                                // El "smsto:" seguido del número abre el chat de ese contacto
+                                                data = Uri.parse("smsto:$phoneNumber")
+                                                putExtra("sms_body", message)
+                                            }
+                                        }
+                                        SendMethod.Mail -> {
+                                            Intent(Intent.ACTION_SENDTO).apply {
+                                                // El "mailto:" seguido del correo pone el destinatario automáticamente
+                                                data = Uri.parse("mailto:$emailAddress")
+                                                putExtra(Intent.EXTRA_SUBJECT, "Recordatorio de cita")
+                                                putExtra(Intent.EXTRA_TEXT, message)
+                                            }
+                                        }
+                                        else -> {
+                                            Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, message)
+                                            }
+                                        }
+                                    }
+
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        val backupIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TEXT, message)
+                                            type = "text/plain"
+                                        }
+                                        context.startActivity(Intent.createChooser(backupIntent, "Enviar recordatorio"))
+                                    }
+                                },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
@@ -1467,7 +1776,12 @@ fun TimeSlotList(
                                 text = "${event.name} (${event.person})",
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable { onEventSelected(event) }
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        onEventSelected(event)
+                                    }
                             )
                         }
                     }
@@ -1481,8 +1795,13 @@ fun TimeSlotList(
                     Text(
                         text = time.format(formatter),
                         modifier = Modifier
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTimeSelected(time) }
-                            .padding(vertical = 4.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onTimeSelected(time) }
+                            .padding(vertical = 4.dp),
+                        fontWeight = if (time.minute == 0) FontWeight.Bold else FontWeight.Normal,
+                        color = if (time.minute == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     eventsForTime.forEach { event ->
                         Row(
@@ -1491,18 +1810,59 @@ fun TimeSlotList(
                                 .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = {
-                                val message = reminderMessage
-                                    .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
-                                    .replace("{hora}", event.time.format(formatter))
-                                val sendIntent: Intent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, message)
-                                    type = "text/plain"
-                                }
-                                val shareIntent = Intent.createChooser(sendIntent, null)
-                                context.startActivity(shareIntent)
-                            },
+                            IconButton(
+                                onClick = {
+                                    val message = reminderMessage
+                                        .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
+                                        .replace("{hora}", event.time.format(formatter))
+
+                                    // Asumiendo que 'event' tiene campos 'phone' y 'email'
+                                    // Si no los tiene, tendrás que añadirlos a tu clase Event o buscarlos
+                                    val phoneNumber = event.phone // Ejemplo: "34600000000"
+                                    val emailAddress = event.email // Ejemplo: "correo@ejemplo.com"
+
+                                    val intent = when (preferredSendMethod) {
+                                        SendMethod.WhatsApp -> {
+                                            Intent(Intent.ACTION_VIEW).apply {
+                                                // WhatsApp requiere el número con prefijo y sin símbolos (+ o espacios)
+                                                val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
+                                                data = Uri.parse(url)
+                                            }
+                                        }
+                                        SendMethod.SMS -> {
+                                            Intent(Intent.ACTION_SENDTO).apply {
+                                                // El "smsto:" seguido del número abre el chat de ese contacto
+                                                data = Uri.parse("smsto:$phoneNumber")
+                                                putExtra("sms_body", message)
+                                            }
+                                        }
+                                        SendMethod.Mail -> {
+                                            Intent(Intent.ACTION_SENDTO).apply {
+                                                // El "mailto:" seguido del correo pone el destinatario automáticamente
+                                                data = Uri.parse("mailto:$emailAddress")
+                                                putExtra(Intent.EXTRA_SUBJECT, "Recordatorio de cita")
+                                                putExtra(Intent.EXTRA_TEXT, message)
+                                            }
+                                        }
+                                        else -> {
+                                            Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, message)
+                                            }
+                                        }
+                                    }
+
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        val backupIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TEXT, message)
+                                            type = "text/plain"
+                                        }
+                                        context.startActivity(Intent.createChooser(backupIntent, "Enviar recordatorio"))
+                                    }
+                                },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
@@ -1515,7 +1875,12 @@ fun TimeSlotList(
                                 text = "${event.name} (${event.person})",
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable { onEventSelected(event) }
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        onEventSelected(event)
+                                    }
                             )
                         }
                     }

@@ -1,27 +1,5 @@
 [
   {
-    "id": "TASK_1",
-    "priority": "MEDIUM",
-    "tags": [],
-    "title": "Cambiar definitivamente la forma de los colores",
-    "description": "",
-    "status": "TODO",
-    "date": {
-      "date": {
-        "year": 2026,
-        "month": 2,
-        "day": 20
-      },
-      "time": {
-        "hour": 14,
-        "minute": 11,
-        "second": 2,
-        "nano": 217668000
-      }
-    },
-    "isImported": false
-  },
-  {
     "id": "TASK_5",
     "priority": "HIGH",
     "tags": [],
@@ -88,23 +66,23 @@
     "isImported": false
   },
   {
-    "id": "TASK_17",
-    "priority": "HIGH",
+    "id": "TASK_30",
+    "priority": "LOW",
     "tags": [],
-    "title": "Añadir opcion para compartir con un texto predifinido",
+    "title": "añadir boton que te lleve a la vista diaria",
     "description": "",
-    "status": "IN_PROGRESS",
+    "status": "TODO",
     "date": {
       "date": {
         "year": 2026,
         "month": 2,
-        "day": 20
+        "day": 24
       },
       "time": {
-        "hour": 14,
-        "minute": 14,
-        "second": 10,
-        "nano": 608916100
+        "hour": 11,
+        "minute": 2,
+        "second": 56,
+        "nano": 739924800
       }
     },
     "isImported": false

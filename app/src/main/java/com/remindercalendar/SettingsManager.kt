@@ -30,15 +30,32 @@ class SettingsManager(context: Context) {
         val TIME_RANGES_KEY = stringSetPreferencesKey("time_ranges")
         val REMINDER_MESSAGE_KEY = stringPreferencesKey("reminder_message")
         val DATE_FORMAT_KEY = stringPreferencesKey("date_format")
+        val PREFERRED_SEND_METHOD_KEY = stringPreferencesKey("preferred_send_method")
     }
 
     val calendarNameFlow: Flow<String> = dataStore.data.map {
         it[CALENDAR_NAME_KEY] ?: "Mi Calendario"
     }
 
+        val preferredSendMethodFlow: Flow<SendMethod> = dataStore.data
+        .map { preferences ->
+            val methodStr = preferences[PREFERRED_SEND_METHOD_KEY] ?: SendMethod.SMS.name
+            try {
+                SendMethod.valueOf(methodStr)
+            } catch (e: Exception) {
+                SendMethod.SMS
+            }
+        }
+
     suspend fun setCalendarName(name: String) {
         dataStore.edit {
             it[CALENDAR_NAME_KEY] = name
+        }
+    }
+
+        suspend fun setPreferredSendMethod(method: SendMethod) {
+        dataStore.edit { preferences ->
+            preferences[PREFERRED_SEND_METHOD_KEY] = method.name
         }
     }
 
