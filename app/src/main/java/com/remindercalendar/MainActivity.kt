@@ -8,21 +8,27 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -32,9 +38,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,19 +53,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsSuggest
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,14 +81,20 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,6 +107,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -94,17 +118,19 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.remindercalendar.ui.theme.ReminderCalendarTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
-
 enum class CalendarView {
-    DAY, WEEK, MONTH
+    MONTH, WEEK, DAY
 }
 
 enum class Screen {
@@ -115,18 +141,27 @@ enum class SendMethod { SMS, WhatsApp, Mail }
 
 data class TimeRange(val start: LocalTime, val end: LocalTime)
 data class Event(
-    val id: Long = System.currentTimeMillis(),
+    val id: Long = 0,
+    val googleCalendarId: Long = 0,
     val name: String,
     val person: String,
     val phone: String = "",
     val email: String = "",
     val date: LocalDate,
-    val time: LocalTime
+    val time: LocalTime,
+    val description: String = ""
 )
 
 class MainActivity : ComponentActivity() {
+    private val eventViewModel: EventViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        splashScreen.setKeepOnScreenCondition {
+            !eventViewModel.isReady.value
+        }
+
         enableEdgeToEdge()
         setContent {
             MainApp()
@@ -135,15 +170,22 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainApp(
-    settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModelFactory(SettingsManager(LocalContext.current))
-    ),
-    eventViewModel: EventViewModel = viewModel(
-        factory = EventViewModelFactory(EventManager(LocalContext.current))
+fun MainApp() {
+    val context = LocalContext.current
+
+    // 1. Creamos las dependencias una sola vez
+    val settingsManager = remember { SettingsManager(context) }
+    val eventManager = remember { EventManager(context) }
+
+    // 2. Pasamos las dependencias a las Factorías
+    val settingsViewModel: SettingsViewModel = viewModel(
+        factory = SettingsViewModelFactory(settingsManager, eventManager) // <--- Añadido eventManager
     )
-) {
-    var currentScreen by remember { mutableStateOf(Screen.CALENDAR) }
+
+    val eventViewModel: EventViewModel = viewModel(
+        factory = EventViewModelFactory(eventManager, settingsManager)
+    )
+    val darkModeConfig: DarkModeConfig by settingsViewModel.darkMode.collectAsState(initial = DarkModeConfig.SYSTEM)
     val calendarName by settingsViewModel.calendarName.collectAsState()
     val headerColor by settingsViewModel.headerColor.collectAsState()
     val buttonsColor by settingsViewModel.buttonsColor.collectAsState()
@@ -151,68 +193,135 @@ fun MainApp(
     val headerTextColor by settingsViewModel.headerTextColor.collectAsState()
     val buttonsTextColor by settingsViewModel.buttonsTextColor.collectAsState()
     val timeRanges by settingsViewModel.timeRanges.collectAsState()
-    val events by eventViewModel.events.collectAsState()
+    val selectedCalendarId by settingsViewModel.selectedCalendarId.collectAsState()
+    val combinedEvents by eventViewModel.allEvents.collectAsState()
     val reminderMessage by settingsViewModel.reminderMessage.collectAsState()
     val dateFormat by settingsViewModel.dateFormat.collectAsState()
     val preferredSendMethod by settingsViewModel.preferredSendMethod.collectAsState()
+    val defaultView by settingsViewModel.defaultView.collectAsState()
 
-    val activity = LocalContext.current as? Activity
-    if (activity != null) {
-        LaunchedEffect(headerTextColor) {
-            val window = activity.window
-            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = headerTextColor == Color.Black
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Si el permiso se acaba de dar, comprobamos si falta la cuenta
+            if (settingsViewModel.selectedCalendarId.value == null) {
+                settingsViewModel.setShowCalendarDialog(true)
+            }
+        } else {
+            Toast.makeText(context, "Sin permiso no se pueden guardar citas", Toast.LENGTH_SHORT).show()
         }
     }
 
-    when (currentScreen) {
-        Screen.CALENDAR -> CalendarScreen(
-            calendarName = calendarName,
-            headerColor = headerColor,
-            buttonsColor = buttonsColor,
-            currentDayColor = currentDayColor,
-            headerTextColor = headerTextColor,
-            buttonsTextColor = buttonsTextColor,
-            timeRanges = timeRanges,
-            events = events,
-            reminderMessage = reminderMessage,
-            dateFormat = dateFormat,
-            onSettingsClick = { currentScreen = Screen.SETTINGS },
-            cambiarPeriodo = ::cambiarPeriodo,
-            onAddEvent = { eventViewModel.addEvent(it) },
-            onUpdateEvent = { eventViewModel.updateEvent(it) },
-            onDeleteEvent = { eventViewModel.deleteEvent(it) },
-            preferredSendMethod = preferredSendMethod
-        )
+    var currentScreen by remember { mutableStateOf(Screen.CALENDAR) }
+    val useDarkTheme = when (darkModeConfig) {
+        DarkModeConfig.LIGHT -> false
+        DarkModeConfig.DARK -> true
+        DarkModeConfig.SYSTEM -> isSystemInDarkTheme()
+    }
+    ReminderCalendarTheme(darkTheme = useDarkTheme) {
+        val activity = LocalContext.current as? Activity
+        if (activity != null) {
+            // Escuchamos los cambios en el color del encabezado
+            @Suppress("DEPRECATION")
+            LaunchedEffect(headerColor, headerTextColor, useDarkTheme) {
+                val window = activity.window
 
-        Screen.SETTINGS -> {
-            BackHandler {
-                currentScreen = Screen.CALENDAR
+                // Esta es la forma actual de gestionar el color de fondo sin que "grite" el IDE
+                window.apply {
+                    // Sigue siendo necesario para el fondo, pero asegúrate de que
+                    // no estás usando una versión de API extremadamente antigua
+                    statusBarColor = headerColor.toArgb()
+                    window.navigationBarColor = Color.Transparent.toArgb() // O el color de tu fondo
+                }
+
+                // Para el estilo de los iconos (claro/oscuro)
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = !useDarkTheme && headerTextColor == Color.Black
             }
-            SettingsScreen(
-                calendarName = calendarName,
-                headerColor = headerColor,
-                buttonsColor = buttonsColor,
-                currentDayColor = currentDayColor,
-                headerTextColor = headerTextColor,
-                buttonsTextColor = buttonsTextColor,
-                timeRanges = timeRanges,
-                reminderMessage = reminderMessage,
-                dateFormat = dateFormat,
-                onCalendarNameChange = { settingsViewModel.setCalendarName(it) },
-                onHeaderColorChange = { settingsViewModel.setHeaderColor(it) },
-                onButtonsColorChange = { settingsViewModel.setButtonsColor(it) },
-                onCurrentDayColorChange = { settingsViewModel.setCurrentDayColor(it) },
-                onHeaderTextColorChange = { settingsViewModel.setHeaderTextColor(it) },
-                onButtonsTextColorChange = { settingsViewModel.setButtonsTextColor(it) },
-                onTimeRangesChange = { settingsViewModel.setTimeRanges(it) },
-                onReminderMessageChange = { settingsViewModel.setReminderMessage(it) },
-                onDateFormatChange = { settingsViewModel.setDateFormat(it) },
-                preferredSendMethod = preferredSendMethod,
-                onPreferredSendMethodChange = { method ->
-                    settingsViewModel.setPreferredSendMethod(method)
-                },
-                onBack = { currentScreen = Screen.CALENDAR }
-            )
+        }
+
+        Surface(color = MaterialTheme.colorScheme.background) {
+            when (currentScreen) {
+                Screen.CALENDAR -> CalendarScreen(
+                    calendarName = calendarName,
+                    headerColor = headerColor,
+                    buttonsColor = buttonsColor,
+                    currentDayColor = currentDayColor,
+                    headerTextColor = headerTextColor,
+                    buttonsTextColor = buttonsTextColor,
+                    timeRanges = timeRanges,
+                    reminderMessage = reminderMessage,
+                    dateFormat = dateFormat,
+                    defaultView = defaultView,
+                    onSettingsClick = { currentScreen = Screen.SETTINGS },
+                    cambiarPeriodo = ::cambiarPeriodo,
+                    events = combinedEvents,
+                    onAddEvent = { event, sync, _ ->
+                        // Obtenemos el ID real del ViewModel
+                        val calendarId = settingsViewModel.selectedCalendarId.value
+
+                        // Verificamos si tenemos permiso de escritura usando el 'context' obtenido arriba
+                        val hasWritePermission = ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.WRITE_CALENDAR
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                        if (!hasWritePermission) {
+                            // Para lanzar el permiso, usamos el launcher (que sí existe en el scope de la Activity)
+                            calendarPermissionLauncher.launch(android.Manifest.permission.WRITE_CALENDAR)
+                            android.widget.Toast.makeText(context, "Concede permisos para guardar", android.widget.Toast.LENGTH_LONG).show()
+                        } else if (calendarId == null) {
+                            // Abrimos el selector si no hay cuenta
+                            settingsViewModel.setShowCalendarDialog(true)
+                            android.widget.Toast.makeText(context, "Selecciona una cuenta para guardar", android.widget.Toast.LENGTH_LONG).show()
+                        } else {
+                            eventViewModel.addEvent(event, sync, calendarId)
+                        }
+                    },
+                    onUpdateEvent = { eventViewModel.updateEvent(it) },
+                    onDeleteEvent = { eventViewModel.deleteEvent(it) },
+                    preferredSendMethod = preferredSendMethod,
+                    onNavigateToSettings = { currentScreen = Screen.SETTINGS },
+                    eventViewModel = eventViewModel,
+                    settingsViewModel = settingsViewModel
+                )
+
+                Screen.SETTINGS -> {
+                    BackHandler {
+                        currentScreen = Screen.CALENDAR
+                    }
+                    SettingsScreen(
+                        calendarName = calendarName,
+                        headerColor = headerColor,
+                        buttonsColor = buttonsColor,
+                        currentDayColor = currentDayColor,
+                        headerTextColor = headerTextColor,
+                        buttonsTextColor = buttonsTextColor,
+                        timeRanges = timeRanges,
+                        reminderMessage = reminderMessage,
+                        dateFormat = dateFormat,
+                        onCalendarNameChange = { settingsViewModel.setCalendarName(it) },
+                        onHeaderColorChange = { settingsViewModel.setHeaderColor(it) },
+                        onButtonsColorChange = { settingsViewModel.setButtonsColor(it) },
+                        onCurrentDayColorChange = { settingsViewModel.setCurrentDayColor(it) },
+                        onHeaderTextColorChange = { settingsViewModel.setHeaderTextColor(it) },
+                        onButtonsTextColorChange = { settingsViewModel.setButtonsTextColor(it) },
+                        onTimeRangesChange = { settingsViewModel.setTimeRanges(it) },
+                        onReminderMessageChange = { settingsViewModel.setReminderMessage(it) },
+                        onDateFormatChange = { settingsViewModel.setDateFormat(it) },
+                        preferredSendMethod = preferredSendMethod,
+                        onPreferredSendMethodChange = { method ->
+                            settingsViewModel.setPreferredSendMethod(method)
+                        },
+                        darkModeConfig = darkModeConfig,
+                        onDarkModeChange = { settingsViewModel.setDarkMode(it) },
+                        settingsViewModel = settingsViewModel,
+                        onSettingsViewChange = { currentScreen = it },
+                        onBack = { currentScreen = Screen.CALENDAR }
+                    )
+                }
+            }
         }
     }
 }
@@ -232,19 +341,26 @@ fun CalendarScreen(
     dateFormat: String,
     onSettingsClick: () -> Unit,
     cambiarPeriodo: (LocalDate, CalendarView, Int) -> LocalDate,
-    onAddEvent: (Event) -> Unit,
+    onAddEvent: (Event, Boolean, Long?) -> Unit,
     onUpdateEvent: (Event) -> Unit,
     onDeleteEvent: (Event) -> Unit,
-    preferredSendMethod: SendMethod
+    preferredSendMethod: SendMethod,
+    defaultView: CalendarView,
+    eventViewModel: EventViewModel,
+    settingsViewModel: SettingsViewModel,
+    onNavigateToSettings: () -> Unit,
 ) {
     var fechaSeleccionada by remember { mutableStateOf(LocalDate.now()) }
-    var vistaActual by remember { mutableStateOf(CalendarView.MONTH) }
+    var vistaActual by remember(defaultView) { mutableStateOf(defaultView) }
     var expanded by remember { mutableStateOf(false) }
     var year by remember { mutableIntStateOf(fechaSeleccionada.year) }
     var editingEvent by remember { mutableStateOf<Event?>(null) }
     var showEventDialogForTime by remember { mutableStateOf<LocalTime?>(null) }
     var showDeleteConfirmationDialog by remember { mutableStateOf<Event?>(null) }
+    val context = LocalContext.current
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val viewModel: EventViewModel = viewModel()
     val meses = listOf(
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
@@ -280,7 +396,7 @@ fun CalendarScreen(
                         phone = phone,
                         email = email
                     )
-                    onAddEvent(newEvent)
+                    onAddEvent(newEvent, true, null)
                 }
                 editingEvent = null
                 showEventDialogForTime = null
@@ -295,11 +411,22 @@ fun CalendarScreen(
         DeleteConfirmationDialog(
             onDismiss = { showDeleteConfirmationDialog = null },
             onConfirm = {
-                showDeleteConfirmationDialog?.let { onDeleteEvent(it) }
+                showDeleteConfirmationDialog?.let { event ->
+                    onDeleteEvent(event)
+                    // Lanzamos el mensaje de aviso
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "Evento eliminado. La sincronización total con Google puede tardar unos minutos.",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
                 showDeleteConfirmationDialog = null
                 editingEvent = null
                 showEventDialogForTime = null
-            }
+            },
+            confirmButtonColor = Color.Red,
+            dismissButtonColor = buttonsColor
         )
     }
 
@@ -307,6 +434,11 @@ fun CalendarScreen(
         drawerState = drawerState,
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
+            BackHandler(enabled = drawerState.isOpen) {
+                scope.launch {
+                    drawerState.close()
+                }
+            }
             ModalDrawerSheet {
                 Box(Modifier.fillMaxHeight()) {
                     Column(Modifier.fillMaxHeight()) {
@@ -342,8 +474,23 @@ fun CalendarScreen(
                             icon = { Icon(Icons.Default.ViewDay, contentDescription = null) }
                         )
 
-                        Spacer(modifier = Modifier.weight(1f))
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 28.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
 
+                        NavigationDrawerItem(
+                            label = { Text("Actualizar") },
+                            selected = false,
+                            onClick = {
+                                viewModel.refreshEvents()
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(Icons.Default.Refresh, contentDescription = null) }
+                        )
+
+                        Spacer(modifier = Modifier.weight(1f))
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 28.dp),
                             thickness = 1.dp,
@@ -376,6 +523,7 @@ fun CalendarScreen(
         }
     ) {
         Scaffold(
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = { Text(calendarName, color = headerTextColor) },
@@ -532,7 +680,12 @@ fun CalendarScreen(
                         }
 
                         CalendarView.DAY -> {
-                            VistaDiaria(fechaSeleccionada)
+                            VistaDiaria(
+                                fecha = fechaSeleccionada,
+                                currentDayColor = currentDayColor,
+                                selectedDate = fechaSeleccionada,
+                                onDateSelected = { fechaSeleccionada = it }
+                            )
                         }
                     }
                 }
@@ -550,7 +703,29 @@ fun CalendarScreen(
                             events = eventsForSelectedDate,
                             reminderMessage = reminderMessage,
                             dateFormat = dateFormat,
-                            onTimeSelected = { time -> showEventDialogForTime = time },
+                            onTimeSelected = { time ->
+                                // 1. Verificamos permisos de escritura
+                                val hasWritePermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.WRITE_CALENDAR
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                // 2. Verificamos si hay una cuenta seleccionada (usando el State de tu ViewModel)
+                                val hasAccount = settingsViewModel.selectedCalendarId.value != null
+
+                                if (hasWritePermission && hasAccount) {
+                                    showEventDialogForTime = time
+                                } else {
+                                    // FALLA ALGO: Activamos el auto-selector y navegamos a ajustes
+                                    settingsViewModel.triggerCalendarSelector()
+
+                                    // Mostramos un aviso rápido al usuario
+                                    Toast.makeText(context, "Configura tu cuenta de calendario", Toast.LENGTH_SHORT).show()
+
+                                    // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
+                                    onNavigateToSettings()
+                                }
+                            },
                             onEventSelected = { event -> editingEvent = event },
                             preferredSendMethod = preferredSendMethod
                         )
@@ -559,11 +734,79 @@ fun CalendarScreen(
                     CalendarView.WEEK -> {
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider()
+                        val eventsForSelectedDate = remember(events, fechaSeleccionada) {
+                            events.filter { it.date == fechaSeleccionada }
+                        }
+                        TimeSlotList(
+                            timeRanges = timeRanges,
+                            events = eventsForSelectedDate,
+                            reminderMessage = reminderMessage,
+                            dateFormat = dateFormat,
+                            onTimeSelected = { time ->
+                                // 1. Verificamos permisos de escritura
+                                val hasWritePermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.WRITE_CALENDAR
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                // 2. Verificamos si hay una cuenta seleccionada (usando el State de tu ViewModel)
+                                val hasAccount = settingsViewModel.selectedCalendarId.value != null
+
+                                if (hasWritePermission && hasAccount) {
+                                    showEventDialogForTime = time
+                                } else {
+                                    // FALLA ALGO: Activamos el auto-selector y navegamos a ajustes
+                                    settingsViewModel.triggerCalendarSelector()
+
+                                    // Mostramos un aviso rápido al usuario
+                                    Toast.makeText(context, "Configura tu cuenta de calendario", Toast.LENGTH_SHORT).show()
+
+                                    // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
+                                    onNavigateToSettings()
+                                }
+                            },
+                            onEventSelected = { event -> editingEvent = event },
+                            preferredSendMethod = preferredSendMethod
+                        )
                     }
 
                     CalendarView.DAY -> {
                         Spacer(modifier = Modifier.height(8.dp))
                         HorizontalDivider()
+                        val eventsForSelectedDate = remember(events, fechaSeleccionada) {
+                            events.filter { it.date == fechaSeleccionada }
+                        }
+                        TimeSlotList(
+                            timeRanges = timeRanges,
+                            events = eventsForSelectedDate,
+                            reminderMessage = reminderMessage,
+                            dateFormat = dateFormat,
+                            onTimeSelected = { time ->
+                                // 1. Verificamos permisos de escritura
+                                val hasWritePermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.WRITE_CALENDAR
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                // 2. Verificamos si hay una cuenta seleccionada (usando el State de tu ViewModel)
+                                val hasAccount = settingsViewModel.selectedCalendarId.value != null
+
+                                if (hasWritePermission && hasAccount) {
+                                    showEventDialogForTime = time
+                                } else {
+                                    // FALLA ALGO: Activamos el auto-selector y navegamos a ajustes
+                                    settingsViewModel.triggerCalendarSelector()
+
+                                    // Mostramos un aviso rápido al usuario
+                                    Toast.makeText(context, "Configura tu cuenta de calendario", Toast.LENGTH_SHORT).show()
+
+                                    // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
+                                    onNavigateToSettings()
+                                }
+                            },
+                            onEventSelected = { event -> editingEvent = event },
+                            preferredSendMethod = preferredSendMethod
+                        )
                     }
                 }
             }
@@ -574,7 +817,9 @@ fun CalendarScreen(
 @Composable
 fun DeleteConfirmationDialog(
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: () -> Unit,
+    confirmButtonColor: Color = Color.Red,
+    dismissButtonColor: Color = Color.Gray
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -616,6 +861,10 @@ fun SettingsScreen(
     onDateFormatChange: (String) -> Unit,
     preferredSendMethod: SendMethod,
     onPreferredSendMethodChange: (SendMethod) -> Unit,
+    darkModeConfig: DarkModeConfig,
+    onDarkModeChange: (DarkModeConfig) -> Unit,
+    settingsViewModel: SettingsViewModel,
+    onSettingsViewChange: (Screen) -> Unit,
     onBack: () -> Unit
 ) {
 
@@ -630,14 +879,38 @@ fun SettingsScreen(
     var showTextColorDialog by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     var isCurrentDayColor by remember { mutableStateOf(false) }
     var showTimeRangeDialog by remember { mutableStateOf(false) }
-    var text by remember { mutableStateOf(dateFormat) }
+    //var text by remember { mutableStateOf(dateFormat) }
+    var expanded by remember { mutableStateOf(false) }
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val highlightState = settingsViewModel.highlightCalendarOption.collectAsState()
+    val highlight = highlightState.value
+    val forceOpen by settingsViewModel.forceShowCalendarSelector.collectAsState()
+    val defaultView by settingsViewModel.defaultView.collectAsState()
+    var showCalendarDialog by remember { mutableStateOf(false) }
     val isDateNeeded = reminderMessage.contains("{fecha}", ignoreCase = true)
     val datePreview = remember(dateFormat) {
         try {
             java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(dateFormat))
         } catch (e: Exception) {
             "Formato inválido"
+        }
+    }
+
+    val animatedColor by animateColorAsState(
+        targetValue = if (highlight) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        else Color.Transparent,
+        animationSpec = tween(durationMillis = 500),
+        label = "Highlighter"
+    )
+
+    LaunchedEffect(forceOpen) {
+        if (forceOpen) {
+            delay(800)
+            // Activamos el estado que abre tu AlertDialog actual
+            showCalendarDialog = true
+            // Limpiamos el trigger para que no se abra cada vez que vuelvas
+            settingsViewModel.clearCalendarSelectorTrigger()
         }
     }
 
@@ -659,7 +932,9 @@ fun SettingsScreen(
         EditDateFormatDialog(
             currentFormat = dateFormat,
             onDismiss = { showDateFormatDialog = false },
-            onConfirm = { onDateFormatChange(it); showDateFormatDialog = false }
+            onConfirm = { it ->
+                onDateFormatChange(it)
+                showDateFormatDialog = false }
         )
     }
     colorToEdit?.let {
@@ -685,11 +960,10 @@ fun SettingsScreen(
 
     if (showDateFormatDialog) {
         EditDateFormatDialog(
-            currentFormat = text,
+            currentFormat = dateFormat,
             onDismiss = { showDateFormatDialog = false },
             onConfirm = { nuevoFormato ->
-                text = nuevoFormato // Actualiza lo que ves en la pantalla
-                // AQUÍ deberías llamar a tu función de guardar (Prefs/Database)
+                onDateFormatChange(nuevoFormato)
                 showDateFormatDialog = false
             }
         )
@@ -714,6 +988,73 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+                Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween // Separa el texto a la izquierda y el menú a la derecha
+            ) {
+                Text(
+                    text = "Tema de la aplicación",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                )
+                Box {
+                    var expandedTema by remember { mutableStateOf(false) }
+
+                    OutlinedButton(
+                        onClick = { expandedTema = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text(
+                            text = when (darkModeConfig) {
+                                DarkModeConfig.LIGHT -> "Claro"
+                                DarkModeConfig.DARK -> "Oscuro"
+                                DarkModeConfig.SYSTEM -> "Sistema"
+                            },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = expandedTema,
+                        onDismissRequest = { expandedTema = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Claro") },
+                            leadingIcon = { Icon(Icons.Default.LightMode, null, modifier = Modifier.size(18.dp)) },
+                            onClick = {
+                                onDarkModeChange(DarkModeConfig.LIGHT)
+                                expandedTema = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Oscuro") },
+                            leadingIcon = { Icon(Icons.Default.DarkMode, null, modifier = Modifier.size(18.dp)) },
+                            onClick = {
+                                onDarkModeChange(DarkModeConfig.DARK)
+                                expandedTema = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Sistema") },
+                            leadingIcon = { Icon(Icons.Default.SettingsSuggest, null, modifier = Modifier.size(18.dp)) },
+                            onClick = {
+                                onDarkModeChange(DarkModeConfig.SYSTEM)
+                                expandedTema = false
+                            }
+                        )
+                    }
+                }
+            }
+            HorizontalDivider()
 
             Row(
                 modifier = Modifier
@@ -773,7 +1114,7 @@ fun SettingsScreen(
                     )
                     if (isDateNeeded) {
                         Text(
-                            text = text.ifBlank { "dd/MM/yyyy" },
+                            text = dateFormat.ifBlank { "dd/MM/yyyy" },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -790,59 +1131,75 @@ fun SettingsScreen(
                 }
             }
             HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+            var expandedEnvio by remember { mutableStateOf(false) }
 
-            var expanded by remember { mutableStateOf(false) }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Método de envío preferido",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded },
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                OutlinedTextField(
-                    value = when(preferredSendMethod) {
-                        SendMethod.WhatsApp -> "WhatsApp"
-                        SendMethod.SMS -> "SMS"
-                        SendMethod.Mail -> "Correo Electrónico"
-                    },
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Selecciona un método") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    modifier = Modifier
-                        .menuAnchor(MenuAnchorType.PrimaryEditable, enabled = true)
-                        .fillMaxWidth()
+                Text(
+                    text = "Método de envío preferido",
+                    style = MaterialTheme.typography.titleMedium
                 )
 
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    SendMethod.entries.forEach { method ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = when(method) {
-                                        SendMethod.WhatsApp -> "WhatsApp"
-                                        SendMethod.SMS -> "SMS"
-                                        SendMethod.Mail -> "Correo Electrónico"
-                                    }
-                                )
+                Box {
+                    OutlinedButton(
+                        onClick = { expandedEnvio = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text(
+                            text = when(preferredSendMethod) {
+                                SendMethod.WhatsApp -> "WhatsApp"
+                                SendMethod.SMS -> "SMS"
+                                SendMethod.Mail -> "Correo"
                             },
-                            onClick = {
-                                onPreferredSendMethodChange(method)
-                                expanded = false
-                            },
-                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            style = MaterialTheme.typography.bodyMedium
                         )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = expandedEnvio,
+                        onDismissRequest = { expandedEnvio = false }
+                    ) {
+                        SendMethod.entries.forEach { method ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = when(method) {
+                                            SendMethod.WhatsApp -> "WhatsApp"
+                                            SendMethod.SMS -> "SMS"
+                                            SendMethod.Mail -> "Correo Electrónico"
+                                        }
+                                    )
+                                },
+                                leadingIcon = {
+                                    val iconPainter = when(method) {
+                                        SendMethod.WhatsApp -> painterResource(id = R.drawable.whatsapp_icon)
+                                        SendMethod.SMS -> rememberVectorPainter(Icons.Default.Sms)
+                                        SendMethod.Mail -> rememberVectorPainter(Icons.Default.Email)
+                                    }
+                                    Icon(
+                                        painter = iconPainter,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    onPreferredSendMethodChange(method)
+                                    expandedEnvio = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -857,8 +1214,188 @@ fun SettingsScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Vista predeterminada",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                var expandedVista by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(
+                        onClick = { expandedVista = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text(
+                            text = when(defaultView) {
+                                CalendarView.MONTH -> "Mes"
+                                CalendarView.WEEK -> "Semana"
+                                CalendarView.DAY -> "Día"
+                            },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                    DropdownMenu(
+                        expanded = expandedVista,
+                        onDismissRequest = { expandedVista = false }
+                    ) {
+                        CalendarView.entries.forEach { view ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = when(view) {
+                                            CalendarView.MONTH -> "Mes"
+                                            CalendarView.WEEK -> "Semana"
+                                            CalendarView.DAY -> "Día"
+                                        }
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = when(view) {
+                                            CalendarView.MONTH -> Icons.Default.DateRange
+                                            CalendarView.WEEK -> Icons.Default.ViewWeek
+                                            CalendarView.DAY -> Icons.Default.ViewDay
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    settingsViewModel.setDefaultView(view)
+                                    expandedVista = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+
+            // Estado para controlar si el diálogo está abierto
+            var showCalendarDialog by remember { mutableStateOf(false) }
+            val context = LocalContext.current
+            val launcher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestMultiplePermissions()
+            ) { permissions ->
+                val readGranted = permissions[Manifest.permission.READ_CALENDAR] ?: false
+                val writeGranted = permissions[Manifest.permission.WRITE_CALENDAR] ?: false
+
+                if (readGranted && writeGranted) {
+                    settingsViewModel.loadCalendars()
+                    showCalendarDialog = true
+                } else {
+                    Toast.makeText(context, "Permiso necesario para ver calendarios", Toast.LENGTH_SHORT).show()
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(animatedColor)
+                    .clickable(
+                        interactionSource = interactionSource, // <--- VINCULAMOS AQUÍ
+                        indication = ripple(), // <--- EFECTO ONDA
+                        onClick = {
+                            // Tu lógica de permisos existente se mantiene intacta
+                            val hasPermission = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.READ_CALENDAR
+                            ) == PackageManager.PERMISSION_GRANTED
+                            val hasWritePermission = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.WRITE_CALENDAR
+                            ) == PackageManager.PERMISSION_GRANTED
+
+                            if (hasPermission && hasWritePermission) {
+                                settingsViewModel.loadCalendars()
+                                showCalendarDialog = true
+                            } else {
+                                launcher.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
+                            }
+                        }
+                    )
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Cuenta de Google seleccionada",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Icon(
+                    imageVector = Icons.Default.ChevronRight, // O ArrowForwardIos
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            if (showCalendarDialog) {
+                val calendars by settingsViewModel.availableCalendars.collectAsState()
+                val selectedCalendarId by settingsViewModel.selectedCalendarId.collectAsState()
+
+                AlertDialog(
+                    onDismissRequest = { showCalendarDialog = false },
+                    title = { Text("Seleccionar Cuenta") },
+                    text = {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            items(calendars) { calendar ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            settingsViewModel.selectPrimaryCalendar(calendar.id.toString())
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .background(Color(calendar.color), CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = calendar.displayName, style = MaterialTheme.typography.bodyLarge)
+                                        Text(text = calendar.accountName, style = MaterialTheme.typography.bodySmall)
+                                    }
+
+                                    // Usamos RadioButton para indicar que solo se elige UNO
+                                    RadioButton(
+                                        selected = calendar.id == selectedCalendarId,
+                                        onClick = {
+                                            settingsViewModel.selectPrimaryCalendar(calendar.id.toString())
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showCalendarDialog = false }) {
+                            Text("Aceptar")
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp)
+                )
+            }
+
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Personalización Visual",
                 style = MaterialTheme.typography.titleSmall,
@@ -1516,17 +2053,71 @@ fun EncabezadoSemana() {
 }
 
 @Composable
-fun VistaDiaria(fecha: LocalDate) {
-    val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
+fun VistaDiaria(
+    fecha: LocalDate,
+    currentDayColor: Color,
+    selectedDate: LocalDate,
+    onDateSelected: (LocalDate) -> Unit
+) {
+    val diaSemanaLetra = when (fecha.dayOfWeek.value) {
+        1 -> "L"
+        2 -> "M"
+        3 -> "X"
+        4 -> "J"
+        5 -> "V"
+        6 -> "S"
+        7 -> "D"
+        else -> ""
+    }
+
+    val esHoy = fecha == LocalDate.now()
+    val esSeleccionado = fecha == selectedDate
 
     Column(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Vista diaria")
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(fecha.format(formatter))
+        Text(
+            text = diaSemanaLetra,
+            style = MaterialTheme.typography.labelMedium
+        )
+
+        Spacer(modifier = Modifier.height(9.dp))
+
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onDateSelected(fecha) },
+            contentAlignment = Alignment.Center
+        ) {
+            var boxModifier = Modifier.fillMaxSize()
+
+            if (esSeleccionado) {
+                boxModifier = boxModifier.background(
+                    color = currentDayColor.copy(alpha = 0.3f),
+                    shape = CircleShape
+                )
+            }
+            if (esHoy) {
+                boxModifier = boxModifier.border(
+                    width = 2.dp,
+                    color = currentDayColor,
+                    shape = CircleShape
+                )
+            }
+
+            Box(
+                modifier = boxModifier,
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = fecha.dayOfMonth.toString(),
+                )
+            }
+        }
     }
 }
 
@@ -1689,25 +2280,29 @@ fun TimeSlotList(
         .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween
         ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Top
+            ) {
             firstHalf.forEach { time ->
                 val eventsForTime = events.filter { it.time == time }
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Column(modifier = Modifier.padding(vertical = 2.dp)) {
                     Text(
                         text = time.format(formatter),
+                        style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { onTimeSelected(time) }
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 2.dp),
                         fontWeight = if (time.minute == 0) FontWeight.Bold else FontWeight.Normal,
                         color = if (time.minute == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     eventsForTime.forEach { event ->
                         Row(
                             modifier = Modifier
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
                                 .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1717,29 +2312,24 @@ fun TimeSlotList(
                                         .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
                                         .replace("{hora}", event.time.format(formatter))
 
-                                    // Asumiendo que 'event' tiene campos 'phone' y 'email'
-                                    // Si no los tiene, tendrás que añadirlos a tu clase Event o buscarlos
-                                    val phoneNumber = event.phone // Ejemplo: "34600000000"
-                                    val emailAddress = event.email // Ejemplo: "correo@ejemplo.com"
+                                    val phoneNumber = event.phone
+                                    val emailAddress = event.email
 
                                     val intent = when (preferredSendMethod) {
                                         SendMethod.WhatsApp -> {
                                             Intent(Intent.ACTION_VIEW).apply {
-                                                // WhatsApp requiere el número con prefijo y sin símbolos (+ o espacios)
                                                 val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
                                                 data = Uri.parse(url)
                                             }
                                         }
                                         SendMethod.SMS -> {
                                             Intent(Intent.ACTION_SENDTO).apply {
-                                                // El "smsto:" seguido del número abre el chat de ese contacto
                                                 data = Uri.parse("smsto:$phoneNumber")
                                                 putExtra("sms_body", message)
                                             }
                                         }
                                         SendMethod.Mail -> {
                                             Intent(Intent.ACTION_SENDTO).apply {
-                                                // El "mailto:" seguido del correo pone el destinatario automáticamente
                                                 data = Uri.parse("mailto:$emailAddress")
                                                 putExtra(Intent.EXTRA_SUBJECT, "Recordatorio de cita")
                                                 putExtra(Intent.EXTRA_TEXT, message)
@@ -1788,25 +2378,28 @@ fun TimeSlotList(
                 }
             }
         }
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Top
+            ) {
             secondHalf.forEach { time ->
                 val eventsForTime = events.filter { it.time == time }
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Column(modifier = Modifier.padding(vertical = 2.dp)) {
                     Text(
                         text = time.format(formatter),
+                        style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { onTimeSelected(time) }
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 2.dp),
                         fontWeight = if (time.minute == 0) FontWeight.Bold else FontWeight.Normal,
                         color = if (time.minute == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     eventsForTime.forEach { event ->
                         Row(
                             modifier = Modifier
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
                                 .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1815,30 +2408,24 @@ fun TimeSlotList(
                                     val message = reminderMessage
                                         .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
                                         .replace("{hora}", event.time.format(formatter))
-
-                                    // Asumiendo que 'event' tiene campos 'phone' y 'email'
-                                    // Si no los tiene, tendrás que añadirlos a tu clase Event o buscarlos
-                                    val phoneNumber = event.phone // Ejemplo: "34600000000"
-                                    val emailAddress = event.email // Ejemplo: "correo@ejemplo.com"
+                                    val phoneNumber = event.phone
+                                    val emailAddress = event.email
 
                                     val intent = when (preferredSendMethod) {
                                         SendMethod.WhatsApp -> {
                                             Intent(Intent.ACTION_VIEW).apply {
-                                                // WhatsApp requiere el número con prefijo y sin símbolos (+ o espacios)
                                                 val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
                                                 data = Uri.parse(url)
                                             }
                                         }
                                         SendMethod.SMS -> {
                                             Intent(Intent.ACTION_SENDTO).apply {
-                                                // El "smsto:" seguido del número abre el chat de ese contacto
                                                 data = Uri.parse("smsto:$phoneNumber")
                                                 putExtra("sms_body", message)
                                             }
                                         }
                                         SendMethod.Mail -> {
                                             Intent(Intent.ACTION_SENDTO).apply {
-                                                // El "mailto:" seguido del correo pone el destinatario automáticamente
                                                 data = Uri.parse("mailto:$emailAddress")
                                                 putExtra(Intent.EXTRA_SUBJECT, "Recordatorio de cita")
                                                 putExtra(Intent.EXTRA_TEXT, message)

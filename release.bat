@@ -22,4 +22,4 @@ git push origin "%VERSION_TAG%"
 
 echo Proceso completado
 
-REM .\release.bat "Added: Option to share directly via SMS, Mail or WhatsApp using the phone number and mail saved on the imported contact and minor fixes" v0.8.0
+REM .\release.bat "Added: Sync with Google Calendar, updated icon and minor fixes" v1.0.0
