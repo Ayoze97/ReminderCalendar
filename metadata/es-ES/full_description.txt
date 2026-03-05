@@ -1,0 +1,10 @@
+Características:
+- Permite configurar el envío de un mensaje al contacto configurado por SMS, correo electrónico o WhatsApp.
+- Vista mensual, semanal y diaria.
+- Utiliza la cuenta de Google para la sincronización entre dispositivos.
+- Material Design.
+- Temas oscuro y claro.
+- Color personalizable del encabezado, los botones y el indicador del día.
+- Gratuito, de código abierto y sin publicidad.
+
+Código fuente: https://github.com/Ayoze97/ReminderCalendar

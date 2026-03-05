@@ -1,0 +1,10 @@
+Features:
+- Let you configure a message to sent to the configured contact via: SMS, Mail or WhatsApp.
+- Month, week and day view.
+- Uses Google Account to sync between devices.
+- Material Design.
+- Dark and light theme.
+- Header, button and day indicator color can be customize.
+- Free, open source and Adfree
+
+Source Code: https://github.com/Ayoze97/ReminderCalendar
