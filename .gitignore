@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+*.bat
+keystore_b64.txt
+release.keystore
