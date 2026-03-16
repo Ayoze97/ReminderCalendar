@@ -19,7 +19,7 @@ import java.time.LocalTime
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-class SettingsManager(context: Context) {
+class SettingsManager(val context: Context) {
 
     private val dataStore = context.dataStore
 
@@ -94,7 +94,7 @@ class SettingsManager(context: Context) {
         return Color(colorLong.toInt())
     }
     fun getInitialCalendarName(): String {
-        return readSync(CALENDAR_NAME_KEY, "Mi Calendario")
+        return readSync(CALENDAR_NAME_KEY, context.getString(R.string.cal_name_sel))
     }
 
     // El Flow que escuchará el ViewModel
@@ -135,7 +135,7 @@ class SettingsManager(context: Context) {
 
     // --- CALENDARIO ---
     val calendarNameFlow: Flow<String> = dataStore.data.map {
-        it[CALENDAR_NAME_KEY] ?: "Mi Calendario"
+        it[CALENDAR_NAME_KEY] ?: context.getString(R.string.cal_name_sel)
     }
 
     suspend fun setCalendarName(name: String) {
@@ -230,7 +230,7 @@ class SettingsManager(context: Context) {
 
     // --- MENSAJES Y FORMATOS ---
     val reminderMessageFlow: Flow<String> = dataStore.data.map {
-        it[REMINDER_MESSAGE_KEY] ?: "Hola, te recuerdo tu cita."
+        it[REMINDER_MESSAGE_KEY] ?: context.getString(R.string.msg)
     }
 
     suspend fun setReminderMessage(message: String) {

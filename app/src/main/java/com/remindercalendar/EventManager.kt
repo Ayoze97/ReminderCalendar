@@ -16,7 +16,9 @@ class EventManager(private val context: Context) {
             CalendarContract.Calendars._ID,
             CalendarContract.Calendars.ACCOUNT_NAME,
             CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
-            CalendarContract.Calendars.CALENDAR_COLOR
+            CalendarContract.Calendars.CALENDAR_COLOR,
+            CalendarContract.Calendars.ACCOUNT_TYPE,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
         )
         val cursor = contentResolver.query(
             CalendarContract.Calendars.CONTENT_URI,
@@ -30,16 +32,36 @@ class EventManager(private val context: Context) {
             val nameCol = it.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
             val descCol = it.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME)
             val colorCol = it.getColumnIndex(CalendarContract.Calendars.CALENDAR_COLOR)
+            val typeCol = it.getColumnIndex(CalendarContract.Calendars.ACCOUNT_TYPE)
+            val accessCol = it.getColumnIndex(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
 
             while (it.moveToNext()) {
-                calendarList.add(
-                    CalendarAccount(
-                        id = it.getLong(idCol),
-                        accountName = it.getString(nameCol),
-                        displayName = it.getString(descCol),
-                        color = it.getInt(colorCol)
+                val accessLevel = it.getInt(accessCol)
+
+                if (accessLevel >= CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) {
+
+                    val accountType = it.getString(typeCol)
+                    val rawAccountName = it.getString(nameCol)
+
+                    val isLocal = accountType == CalendarContract.ACCOUNT_TYPE_LOCAL ||
+                            rawAccountName.isNullOrBlank() ||
+                            !rawAccountName.contains("@")
+
+                    val finalAccountName = if (isLocal) {
+                        context.getString(R.string.cal_local)
+                    } else {
+                        rawAccountName
+                    }
+
+                    calendarList.add(
+                        CalendarAccount(
+                            id = it.getLong(idCol),
+                            accountName = finalAccountName,
+                            displayName = it.getString(descCol),
+                            color = it.getInt(colorCol)
+                        )
                     )
-                )
+                }
             }
         }
         return calendarList
@@ -97,9 +119,9 @@ class EventManager(private val context: Context) {
                         if (description.isNotEmpty()) {
                             description.lines().forEach { line ->
                                 when {
-                                    line.startsWith("Persona: ") -> extractedPerson = line.removePrefix("Persona: ").trim()
-                                    line.startsWith("Tel: ") -> extractedPhone = line.removePrefix("Tel: ").trim()
-                                    line.startsWith("Email: ") -> extractedEmail = line.removePrefix("Email: ").trim()
+                                    line.startsWith(context.getString(R.string.desc_person)) -> extractedPerson = line.removePrefix(context.getString(R.string.desc_person)).trim()
+                                    line.startsWith(context.getString(R.string.desc_phone)) -> extractedPhone = line.removePrefix(context.getString(R.string.desc_phone)).trim()
+                                    line.startsWith(context.getString(R.string.desc_mail)) -> extractedEmail = line.removePrefix(context.getString(R.string.desc_mail)).trim()
                                 }
                             }
                         }
@@ -126,7 +148,9 @@ class EventManager(private val context: Context) {
                                 googleCalendarId = calId, // Importante para ediciones futuras
                                 date = zonedDateTime.toLocalDate(),
                                 time = zonedDateTime.toLocalTime(),
-                                name = cursor.getString(titleIdx)?.substringBefore(" (") ?: "Evento",
+                                name = cursor.getString(titleIdx)?.substringBefore(" (") ?: context.getString(
+                                    R.string.event
+                                ),
                                 person = extractedPerson, // <--- Ahora es dinámico
                                 description = description,
                                 phone = extractedPhone,    // <--- Ahora es dinámico
@@ -160,11 +184,15 @@ class EventManager(private val context: Context) {
                 // 1. Título con nombre de persona
                 put(CalendarContract.Events.TITLE, "${event.name} (${event.person})")
 
+                val labelPerson = context.getString(R.string.desc_person)
+                val labelPhone = context.getString(R.string.desc_phone)
+                val labelEmail = context.getString(R.string.desc_mail)
+
                 // 2. Descripción con etiquetas para que la lectura funcione
                 val descripcionFormateada = """
-                Persona: ${event.person}
-                Tel: ${event.phone}
-                Email: ${event.email}
+                $labelPerson${event.person}
+                $labelPhone${event.phone}
+                $labelEmail${event.email}
                 
                 ${event.description}
             """.trimIndent()
@@ -183,7 +211,7 @@ class EventManager(private val context: Context) {
             val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
 
             if (uri != null) {
-                android.util.Log.d("GoogleSync", "✅ EXITO: ID ${uri.lastPathSegment}")
+                android.util.Log.d("GoogleSync", "✅ ÉXITO: ID ${uri.lastPathSegment}")
                 uri.lastPathSegment?.toLong()
             } else {
                 null
@@ -195,9 +223,13 @@ class EventManager(private val context: Context) {
     }
 
     fun updateGoogleEvent(event: Event): Boolean {
+
+        val labelPerson = context.getString(R.string.desc_person)
+        val labelPhone = context.getString(R.string.desc_phone)
+        val labelEmail = context.getString(R.string.desc_mail)
         val values = ContentValues().apply {
             put(CalendarContract.Events.TITLE, "${event.name} (${event.person})")
-            put(CalendarContract.Events.DESCRIPTION, "Persona: ${event.person}\nTel: ${event.phone}\nEmail: ${event.email}")
+            put(CalendarContract.Events.DESCRIPTION, "$labelPerson${event.person}\n$labelPhone${event.phone}\n$labelEmail${event.email}")
 
             val startMillis = event.date.atTime(event.time)
                 .atZone(ZoneId.systemDefault())

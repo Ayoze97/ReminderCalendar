@@ -1,7 +1,6 @@
 package com.remindercalendar
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -11,6 +10,7 @@ import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -112,6 +112,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -122,8 +123,10 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remindercalendar.ui.theme.ReminderCalendarTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -173,13 +176,14 @@ class MainActivity : ComponentActivity() {
 fun MainApp() {
     val context = LocalContext.current
 
-    // 1. Creamos las dependencias una sola vez
+    val permissionWarning = stringResource(R.string.permission_warning)
+    val grantPermissionWarning = stringResource(R.string.grant_perm_warning)
+    val selStorage = stringResource(R.string.select_storage)
+
     val settingsManager = remember { SettingsManager(context) }
     val eventManager = remember { EventManager(context) }
-
-    // 2. Pasamos las dependencias a las Factorías
     val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModelFactory(settingsManager, eventManager) // <--- Añadido eventManager
+        factory = SettingsViewModelFactory(settingsManager, eventManager, context) // <--- Añadido eventManager
     )
 
     val eventViewModel: EventViewModel = viewModel(
@@ -209,7 +213,7 @@ fun MainApp() {
                 settingsViewModel.setShowCalendarDialog(true)
             }
         } else {
-            Toast.makeText(context, "Sin permiso no se pueden guardar citas", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context,permissionWarning, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -220,7 +224,7 @@ fun MainApp() {
         DarkModeConfig.SYSTEM -> isSystemInDarkTheme()
     }
     ReminderCalendarTheme(darkTheme = useDarkTheme) {
-        val activity = LocalContext.current as? Activity
+        val activity = LocalActivity.current
         if (activity != null) {
             // Escuchamos los cambios en el color del encabezado
             @Suppress("DEPRECATION")
@@ -270,11 +274,11 @@ fun MainApp() {
                         if (!hasWritePermission) {
                             // Para lanzar el permiso, usamos el launcher (que sí existe en el scope de la Activity)
                             calendarPermissionLauncher.launch(android.Manifest.permission.WRITE_CALENDAR)
-                            android.widget.Toast.makeText(context, "Concede permisos para guardar", android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, grantPermissionWarning, android.widget.Toast.LENGTH_LONG).show()
                         } else if (calendarId == null) {
                             // Abrimos el selector si no hay cuenta
                             settingsViewModel.setShowCalendarDialog(true)
-                            android.widget.Toast.makeText(context, "Selecciona una cuenta para guardar", android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, selStorage, android.widget.Toast.LENGTH_LONG).show()
                         } else {
                             eventViewModel.addEvent(event, sync, calendarId)
                         }
@@ -357,13 +361,28 @@ fun CalendarScreen(
     var editingEvent by remember { mutableStateOf<Event?>(null) }
     var showEventDialogForTime by remember { mutableStateOf<LocalTime?>(null) }
     var showDeleteConfirmationDialog by remember { mutableStateOf<Event?>(null) }
+    val selectedCalendarId by settingsViewModel.selectedCalendarId.collectAsState()
     val context = LocalContext.current
+    val eventManager = remember { EventManager(context) }
+
+    val delEventWarning = stringResource(R.string.del_event_warning)
+    val calAccSet = stringResource(R.string.cal_account_setup)
 
     val snackbarHostState = remember { SnackbarHostState() }
     val viewModel: EventViewModel = viewModel()
     val meses = listOf(
-        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        stringResource(R.string.month_jan),
+        stringResource(R.string.month_feb),
+        stringResource(R.string.month_mar), 
+        stringResource(R.string.month_apr),
+        stringResource(R.string.month_may), 
+        stringResource(R.string.month_jun),
+        stringResource(R.string.month_jul),
+        stringResource(R.string.month_aug),
+        stringResource(R.string.month_sep),
+        stringResource(R.string.month_oct), 
+        stringResource(R.string.month_nov),
+        stringResource(R.string.month_dec)
     )
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -413,12 +432,35 @@ fun CalendarScreen(
             onConfirm = {
                 showDeleteConfirmationDialog?.let { event ->
                     onDeleteEvent(event)
-                    // Lanzamos el mensaje de aviso
+                    val currentId = selectedCalendarId
+
                     scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "Evento eliminado. La sincronización total con Google puede tardar unos minutos.",
-                            duration = SnackbarDuration.Short
-                        )
+                        val isGoogle = withContext(Dispatchers.IO) {
+                            val projection = arrayOf(android.provider.CalendarContract.Calendars.ACCOUNT_TYPE)
+                            val selection = "${android.provider.CalendarContract.Calendars._ID} = ?"
+                            val selectionArgs = arrayOf(currentId.toString())
+
+                            var type: String? = null
+                            context.contentResolver.query(
+                                android.provider.CalendarContract.Calendars.CONTENT_URI,
+                                projection,
+                                selection,
+                                selectionArgs,
+                                null
+                            )?.use { cursor ->
+                                if (cursor.moveToFirst()) {
+                                    type = cursor.getString(0)
+                                }
+                            }
+                            type == "com.google"
+                        }
+
+                        if (isGoogle) {
+                            snackbarHostState.showSnackbar(
+                                message = delEventWarning,
+                                duration = SnackbarDuration.Short
+                            )
+                        }
                     }
                 }
                 showDeleteConfirmationDialog = null
@@ -442,10 +484,10 @@ fun CalendarScreen(
             ModalDrawerSheet {
                 Box(Modifier.fillMaxHeight()) {
                     Column(Modifier.fillMaxHeight()) {
-                        Text("Seleccionar vista", modifier = Modifier.padding(16.dp))
+                        Text(stringResource(R.string.sel_view), modifier = Modifier.padding(16.dp))
 
                         NavigationDrawerItem(
-                            label = { Text("Mes") },
+                            label = { Text(stringResource(R.string.month_view)) },
                             selected = vistaActual == CalendarView.MONTH,
                             onClick = {
                                 vistaActual = CalendarView.MONTH
@@ -455,7 +497,7 @@ fun CalendarScreen(
                         )
 
                         NavigationDrawerItem(
-                            label = { Text("Semana") },
+                            label = { Text(stringResource(R.string.week_view)) },
                             selected = vistaActual == CalendarView.WEEK,
                             onClick = {
                                 vistaActual = CalendarView.WEEK
@@ -465,7 +507,7 @@ fun CalendarScreen(
                         )
 
                         NavigationDrawerItem(
-                            label = { Text("Día") },
+                            label = { Text(stringResource(R.string.day_view)) },
                             selected = vistaActual == CalendarView.DAY,
                             onClick = {
                                 vistaActual = CalendarView.DAY
@@ -481,7 +523,7 @@ fun CalendarScreen(
                         )
 
                         NavigationDrawerItem(
-                            label = { Text("Actualizar") },
+                            label = { Text(stringResource(R.string.refresh)) },
                             selected = false,
                             onClick = {
                                 viewModel.refreshEvents()
@@ -512,7 +554,7 @@ fun CalendarScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "Ajustes",
+                            contentDescription = stringResource(R.string.settings),
                             modifier = Modifier
                                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                                 .padding(8.dp)
@@ -542,7 +584,7 @@ fun CalendarScreen(
                                 .clickable(onClick = { fechaSeleccionada = LocalDate.now() })
                         ) {
                             Text(
-                                text = "Hoy",
+                                text = stringResource(R.string.today),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = buttonsTextColor,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -599,7 +641,7 @@ fun CalendarScreen(
                             )
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Cambiar mes",
+                                contentDescription = stringResource(R.string.month_change),
                                 tint = buttonsTextColor
                             )
                         }
@@ -619,7 +661,7 @@ fun CalendarScreen(
                             HorizontalDivider()
 
                             DropdownMenuItem(
-                                text = { Text("Año anterior") },
+                                text = { Text(stringResource(R.string.prev_year)) },
                                 onClick = {
                                     year--
                                     fechaSeleccionada = fechaSeleccionada.withYear(year)
@@ -628,7 +670,7 @@ fun CalendarScreen(
                             )
 
                             DropdownMenuItem(
-                                text = { Text("Año siguiente") },
+                                text = { Text(stringResource(R.string.next_year)) },
                                 onClick = {
                                     year++
                                     fechaSeleccionada = fechaSeleccionada.withYear(year)
@@ -720,7 +762,7 @@ fun CalendarScreen(
                                     settingsViewModel.triggerCalendarSelector()
 
                                     // Mostramos un aviso rápido al usuario
-                                    Toast.makeText(context, "Configura tu cuenta de calendario", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context,calAccSet, Toast.LENGTH_SHORT).show()
 
                                     // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
                                     onNavigateToSettings()
@@ -759,7 +801,7 @@ fun CalendarScreen(
                                     settingsViewModel.triggerCalendarSelector()
 
                                     // Mostramos un aviso rápido al usuario
-                                    Toast.makeText(context, "Configura tu cuenta de calendario", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context,calAccSet, Toast.LENGTH_SHORT).show()
 
                                     // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
                                     onNavigateToSettings()
@@ -798,7 +840,7 @@ fun CalendarScreen(
                                     settingsViewModel.triggerCalendarSelector()
 
                                     // Mostramos un aviso rápido al usuario
-                                    Toast.makeText(context, "Configura tu cuenta de calendario", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context,calAccSet, Toast.LENGTH_SHORT).show()
 
                                     // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
                                     onNavigateToSettings()
@@ -823,16 +865,16 @@ fun DeleteConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Confirmar eliminación") },
-        text = { Text("¿Estás seguro de que quieres eliminar este evento?") },
+        title = { Text(stringResource(R.string.del_confirm_warning_header)) },
+        text = { Text(stringResource(R.string.del_confirm_warning_msg)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Eliminar")
+                Text(stringResource(R.string.del))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -882,18 +924,21 @@ fun SettingsScreen(
     //var text by remember { mutableStateOf(dateFormat) }
     var expanded by remember { mutableStateOf(false) }
 
+    val invFormat = stringResource(R.string.inv_format)
+    val permWarning = stringResource(R.string.permission_warning)
+
     val interactionSource = remember { MutableInteractionSource() }
     val highlightState = settingsViewModel.highlightCalendarOption.collectAsState()
     val highlight = highlightState.value
     val forceOpen by settingsViewModel.forceShowCalendarSelector.collectAsState()
     val defaultView by settingsViewModel.defaultView.collectAsState()
     var showCalendarDialog by remember { mutableStateOf(false) }
-    val isDateNeeded = reminderMessage.contains("{fecha}", ignoreCase = true)
+    val isDateNeeded = reminderMessage.contains(stringResource(R.string.inserted_date), ignoreCase = true)
     val datePreview = remember(dateFormat) {
         try {
             java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(dateFormat))
         } catch (e: Exception) {
-            "Formato inválido"
+            invFormat
         }
     }
 
@@ -972,10 +1017,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ajustes") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                     }
                 }
             )
@@ -996,7 +1041,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween // Separa el texto a la izquierda y el menú a la derecha
             ) {
                 Text(
-                    text = "Tema de la aplicación",
+                    text = stringResource(R.string.app_theme),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
@@ -1010,9 +1055,9 @@ fun SettingsScreen(
                     ) {
                         Text(
                             text = when (darkModeConfig) {
-                                DarkModeConfig.LIGHT -> "Claro"
-                                DarkModeConfig.DARK -> "Oscuro"
-                                DarkModeConfig.SYSTEM -> "Sistema"
+                                DarkModeConfig.LIGHT -> stringResource(R.string.light_mode)
+                                DarkModeConfig.DARK -> stringResource(R.string.dark_mode)
+                                DarkModeConfig.SYSTEM -> stringResource(R.string.system_mode)
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -1028,7 +1073,7 @@ fun SettingsScreen(
                         onDismissRequest = { expandedTema = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Claro") },
+                            text = { Text(stringResource(R.string.light_mode)) },
                             leadingIcon = { Icon(Icons.Default.LightMode, null, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 onDarkModeChange(DarkModeConfig.LIGHT)
@@ -1036,7 +1081,7 @@ fun SettingsScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Oscuro") },
+                            text = { Text(stringResource(R.string.dark_mode)) },
                             leadingIcon = { Icon(Icons.Default.DarkMode, null, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 onDarkModeChange(DarkModeConfig.DARK)
@@ -1044,7 +1089,7 @@ fun SettingsScreen(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Sistema") },
+                            text = { Text(stringResource(R.string.system_mode)) },
                             leadingIcon = { Icon(Icons.Default.SettingsSuggest, null, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 onDarkModeChange(DarkModeConfig.SYSTEM)
@@ -1064,7 +1109,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Nombre del calendario", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.cal_name), style = MaterialTheme.typography.titleMedium)
                 Text(calendarName, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
             }
             HorizontalDivider()
@@ -1077,7 +1122,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Rango horario", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.range), style = MaterialTheme.typography.titleMedium)
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
             }
             HorizontalDivider()
@@ -1091,7 +1136,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Mensaje de recordatorio", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.rem_msg), style = MaterialTheme.typography.titleMedium)
                     Text(reminderMessage, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
@@ -1108,7 +1153,7 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Formato de fecha",
+                        text = stringResource(R.string.date_format),
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (isDateNeeded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                     )
@@ -1120,7 +1165,7 @@ fun SettingsScreen(
                         )
                     } else {
                         Text(
-                            text = "No se usa {fecha} en el mensaje",
+                            text = stringResource(R.string.date_msg_warning),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
@@ -1142,7 +1187,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Método de envío preferido",
+                    text = stringResource(R.string.pref_send_method),
                     style = MaterialTheme.typography.titleMedium
                 )
 
@@ -1156,7 +1201,7 @@ fun SettingsScreen(
                             text = when(preferredSendMethod) {
                                 SendMethod.WhatsApp -> "WhatsApp"
                                 SendMethod.SMS -> "SMS"
-                                SendMethod.Mail -> "Correo"
+                                SendMethod.Mail -> stringResource(R.string.pref_send_method_mail)
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -1178,7 +1223,7 @@ fun SettingsScreen(
                                         text = when(method) {
                                             SendMethod.WhatsApp -> "WhatsApp"
                                             SendMethod.SMS -> "SMS"
-                                            SendMethod.Mail -> "Correo Electrónico"
+                                            SendMethod.Mail -> stringResource(R.string.pref_send_method_mail)
                                         }
                                     )
                                 },
@@ -1206,7 +1251,7 @@ fun SettingsScreen(
 
             if (preferredSendMethod == SendMethod.Mail) {
                 Text(
-                    text = "Nota: El contacto debe tener un correo guardado.",
+                    text = stringResource(R.string.stored_mail_warning),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp)
@@ -1223,7 +1268,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Vista predeterminada",
+                    text = stringResource(R.string.def_view),
                     style = MaterialTheme.typography.titleMedium
                 )
                 var expandedVista by remember { mutableStateOf(false) }
@@ -1235,9 +1280,9 @@ fun SettingsScreen(
                     ) {
                         Text(
                             text = when(defaultView) {
-                                CalendarView.MONTH -> "Mes"
-                                CalendarView.WEEK -> "Semana"
-                                CalendarView.DAY -> "Día"
+                                CalendarView.MONTH -> stringResource(R.string.month_view)
+                                CalendarView.WEEK -> stringResource(R.string.week_view)
+                                CalendarView.DAY -> stringResource(R.string.day_view)
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -1257,9 +1302,9 @@ fun SettingsScreen(
                                 text = {
                                     Text(
                                         text = when(view) {
-                                            CalendarView.MONTH -> "Mes"
-                                            CalendarView.WEEK -> "Semana"
-                                            CalendarView.DAY -> "Día"
+                                            CalendarView.MONTH -> stringResource(R.string.month_view)
+                                            CalendarView.WEEK -> stringResource(R.string.week_view)
+                                            CalendarView.DAY -> stringResource(R.string.day_view)
                                         }
                                     )
                                 },
@@ -1300,7 +1345,7 @@ fun SettingsScreen(
                     settingsViewModel.loadCalendars()
                     showCalendarDialog = true
                 } else {
-                    Toast.makeText(context, "Permiso necesario para ver calendarios", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context,permWarning , Toast.LENGTH_SHORT).show()
                 }
             }
             Row(
@@ -1325,7 +1370,12 @@ fun SettingsScreen(
                                 settingsViewModel.loadCalendars()
                                 showCalendarDialog = true
                             } else {
-                                launcher.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
+                                launcher.launch(
+                                    arrayOf(
+                                        Manifest.permission.READ_CALENDAR,
+                                        Manifest.permission.WRITE_CALENDAR
+                                    )
+                                )
                             }
                         }
                     )
@@ -1334,7 +1384,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Cuenta de Google seleccionada",
+                    text = stringResource(R.string.cal_selected),
                     style = MaterialTheme.typography.titleMedium
                 )
                 Icon(
@@ -1350,7 +1400,7 @@ fun SettingsScreen(
 
                 AlertDialog(
                     onDismissRequest = { showCalendarDialog = false },
-                    title = { Text("Seleccionar Cuenta") },
+                    title = { Text(stringResource(R.string.cal_select)) },
                     text = {
                         LazyColumn(modifier = Modifier.fillMaxWidth()) {
                             items(calendars) { calendar ->
@@ -1387,7 +1437,7 @@ fun SettingsScreen(
                     },
                     confirmButton = {
                         TextButton(onClick = { showCalendarDialog = false }) {
-                            Text("Aceptar")
+                            Text(stringResource(R.string.accept))
                         }
                     },
                     shape = RoundedCornerShape(16.dp)
@@ -1397,7 +1447,7 @@ fun SettingsScreen(
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Personalización Visual",
+                text = stringResource(R.string.visual_custom),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -1412,7 +1462,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Color de encabezado", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.color_header), style = MaterialTheme.typography.titleMedium)
                     Surface(
                         modifier = Modifier.size(24.dp),
                         shape = CircleShape,
@@ -1429,7 +1479,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Color texto encabezado", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.color_header_text), style = MaterialTheme.typography.bodyLarge)
                     Surface(
                         modifier = Modifier.size(24.dp),
                         shape = CircleShape,
@@ -1449,7 +1499,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Color de botones", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.color_button), style = MaterialTheme.typography.titleMedium)
                     Surface(
                         modifier = Modifier.size(24.dp),
                         shape = CircleShape,
@@ -1466,7 +1516,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Color texto botones", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.color_button_text), style = MaterialTheme.typography.bodyLarge)
                     Surface(
                         modifier = Modifier.size(24.dp),
                         shape = CircleShape,
@@ -1485,7 +1535,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Color día seleccionado y actual", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.color_day), style = MaterialTheme.typography.titleMedium)
                 Surface(
                     modifier = Modifier.size(24.dp),
                     shape = CircleShape,
@@ -1517,19 +1567,19 @@ fun EditDateFormatDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Editar formato de fecha") },
+        title = { Text(stringResource(R.string.edit_date_format)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    label = { Text("Formato") },
+                    label = { Text(stringResource(R.string.format)) },
                     isError = isError,
                     placeholder = { Text("dd/MM/yyyy") },
                     modifier = Modifier.fillMaxWidth(),
                     supportingText = {
                         if (isError) {
-                            Text("Caracteres de hora no válidos (H, m, s...)")
+                            Text(stringResource(R.string.invalid_char))
                         }
                     }
                 )
@@ -1537,12 +1587,12 @@ fun EditDateFormatDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Vista previa:",
+                    text = stringResource(R.string.preview),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = preview ?: "Formato inválido para fecha",
+                    text = preview ?: stringResource(R.string.inv_date_format),
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                 )
@@ -1550,7 +1600,7 @@ fun EditDateFormatDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Ej: dd/MM/yyyy, EEEE d MMMM",
+                    text = stringResource(R.string.date_example),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1564,12 +1614,12 @@ fun EditDateFormatDialog(
                 },
                 enabled = !isError
             ) {
-                Text("Confirmar")
+                Text(stringResource(R.string.accept))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -1583,42 +1633,45 @@ fun EditReminderMessageDialog(
 ) {
     var textFieldValue by remember { mutableStateOf(TextFieldValue(currentMessage)) }
 
+    val insertedDate = stringResource(R.string.inserted_date)
+    val insertedTime = stringResource(R.string.inserted_time)
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Editar mensaje de recordatorio") },
+        title = { Text(stringResource(R.string.rem_msg_edit)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = textFieldValue,
                     onValueChange = { textFieldValue = it },
-                    label = { Text("Mensaje") }
+                    label = { Text(stringResource(R.string.message)) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row {
                     TextButton(onClick = {
-                        val newText = textFieldValue.text.replaceRange(textFieldValue.selection.start, textFieldValue.selection.end, "{fecha}")
+                        val newText = textFieldValue.text.replaceRange(textFieldValue.selection.start, textFieldValue.selection.end, insertedDate)
                         textFieldValue = TextFieldValue(newText)
                     }) {
-                        Text("Insertar Fecha")
+                        Text(stringResource(R.string.insert_date))
                     }
                     Spacer(modifier = Modifier.weight(1f))
                     TextButton(onClick = {
-                        val newText = textFieldValue.text.replaceRange(textFieldValue.selection.start, textFieldValue.selection.end, "{hora}")
+                        val newText = textFieldValue.text.replaceRange(textFieldValue.selection.start, textFieldValue.selection.end, insertedTime)
                         textFieldValue = TextFieldValue(newText)
                     }) {
-                        Text("Insertar Hora")
+                        Text(stringResource(R.string.insert_time))
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(textFieldValue.text) }) {
-                Text("Confirmar")
+                Text(stringResource(R.string.accept))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -1632,15 +1685,16 @@ fun EventDialog(
     onConfirm: (String, String, String, String, LocalTime) -> Unit,
     onDelete: (Event) -> Unit
 ) {
+    val context = LocalContext.current
     var eventName by remember { mutableStateOf(event?.name ?: "") }
     var person by remember { mutableStateOf(event?.person ?: "") }
     val initialTime = event?.time ?: time ?: LocalTime.now()
-    var eventTime by remember { mutableStateOf(initialTime.format(DateTimeFormatter.ofPattern("HH:mm"))) }
+    val is24Hour = DateFormat.is24HourFormat(context)
+    var eventTime by remember { mutableStateOf(initialTime.format(DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h:mm a"))) }
     var isTimeValid by remember { mutableStateOf(true) }
     var phone by remember { mutableStateOf(event?.phone ?: "") }
     var email by remember { mutableStateOf(event?.email ?: "") }
 
-    val context = LocalContext.current
     val contactsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickContact()
     ) { uri ->
@@ -1710,11 +1764,14 @@ fun EventDialog(
         }
     )
 
-    fun validateTime(time: String): Boolean {
+    fun validateTime(time: String, is24Hour: Boolean): Boolean {
         return try {
-            LocalTime.parse(time, DateTimeFormatter.ofPattern("HH:mm"))
+            val pattern = if (is24Hour) "HH:mm" else "h:mm a"
+            val formatter = DateTimeFormatter.ofPattern(pattern, java.util.Locale.US)
+
+            LocalTime.parse(time.trim(),formatter)
             true
-        } catch (e: DateTimeParseException) {
+        } catch (e: Exception) {
             false
         }
     }
@@ -1723,16 +1780,18 @@ fun EventDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (event != null) "Editar evento" else "Crear evento") },
+        title = { Text(if (event != null) stringResource(R.string.event_edit) else stringResource(R.string.event_new)) },
         text = {
             Column {
-                OutlinedTextField(value = eventName, onValueChange = { eventName = it }, label = { Text("Nombre del evento") })
+                OutlinedTextField(value = eventName, onValueChange = { eventName = it }, label = { Text(
+                    stringResource(R.string.event_name)
+                ) })
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = person,
                         onValueChange = { person = it },
-                        label = { Text("Persona") },
+                        label = { Text(stringResource(R.string.person)) },
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = {
@@ -1748,16 +1807,20 @@ fun EventDialog(
                             }
                         }
                     }) {
-                        Icon(painterResource(id = R.drawable.contact_icon), contentDescription = "Seleccionar contacto")
+                        Icon(painterResource(id = R.drawable.contact_icon), contentDescription = stringResource(
+                            R.string.contact_select
+                        ))
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = eventTime, onValueChange = { eventTime = it; isTimeValid = validateTime(it) }, label = { Text("Hora") }, isError = !isTimeValid)
+                OutlinedTextField(value = eventTime, onValueChange = { eventTime = it; isTimeValid = validateTime(it, is24Hour) }, label = { Text(
+                    stringResource(R.string.hour)
+                ) }, isError = !isTimeValid)
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Teléfono (WhatsApp/SMS)") },
-                    placeholder = { Text("Ej: 34600112233") },
+                    label = { Text(stringResource(R.string.phone_wa_sms)) },
+                    placeholder = { Text(stringResource(R.string.phone_example)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1765,8 +1828,8 @@ fun EventDialog(
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Correo electrónico") },
-                    placeholder = { Text("ejemplo@correo.com") },
+                    label = { Text(stringResource(R.string.pref_send_method_mail)) },
+                    placeholder = { Text(stringResource(R.string.mail_example)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1776,12 +1839,15 @@ fun EventDialog(
             TextButton(
                 onClick = {
                     val cleanTime = eventTime.trim()
+                    val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+                    val pattern = if (is24Hour) "HH:mm" else "h:mm a"
+                    val formatter = DateTimeFormatter.ofPattern(pattern, java.util.Locale.US)
 
                     val parsedTime = try {
-                        LocalTime.parse(cleanTime, DateTimeFormatter.ofPattern("HH:mm"))
+                        LocalTime.parse(cleanTime, formatter)
                     } catch (e: Exception) {
                         try {
-                            LocalTime.parse(cleanTime, DateTimeFormatter.ofPattern("H:mm"))
+                            LocalTime.parse(cleanTime, DateTimeFormatter.ofPattern("HH:mm"))
                         } catch (e2: Exception) {
                             LocalTime.now()
                         }
@@ -1791,18 +1857,18 @@ fun EventDialog(
                 },
                 enabled = isConfirmEnabled
             ) {
-                Text(if (event != null) "Guardar" else "Confirmar")
+                Text(if (event != null) stringResource(R.string.save) else stringResource(R.string.accept))
             }
         },
         dismissButton = {
             Row {
                 if (event != null) {
                     TextButton(onClick = { onDelete(event) }) {
-                        Text("Eliminar")
+                        Text(stringResource(R.string.del))
                     }
                 }
                 TextButton(onClick = onDismiss) {
-                    Text("Cancelar")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         }
@@ -1844,40 +1910,44 @@ fun TimeRangeSettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Configurar Rango Horario") },
+        title = { Text(stringResource(R.string.range_config)) },
         text = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = isSplit, onCheckedChange = { isSplit = it })
-                    Text("Horario partido")
+                    Text(stringResource(R.string.split_sch))
                 }
 
                 if (isSplit) {
-                    Text("Mañana", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    Text(stringResource(R.string.morning), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier
+                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text(
+                            stringResource(R.string.start)
+                        ) }, modifier = Modifier
                             .weight(1f)
                             .padding(end = 4.dp), isError = !isRange1StartValid)
-                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier
+                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text(
+                            stringResource(R.string.end)
+                        ) }, modifier = Modifier
                             .weight(1f)
                             .padding(start = 4.dp), isError = !isRange1EndValid)
                     }
-                    Text("Tarde", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    Text(stringResource(R.string.afternoon), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        OutlinedTextField(value = range2Start, onValueChange = { range2Start = it; isRange2StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier
+                        OutlinedTextField(value = range2Start, onValueChange = { range2Start = it; isRange2StartValid = validateTime(it) }, label = { Text(stringResource(R.string.start)) }, modifier = Modifier
                             .weight(1f)
                             .padding(end = 4.dp), isError = !isRange2StartValid)
-                        OutlinedTextField(value = range2End, onValueChange = { range2End = it; isRange2EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier
+                        OutlinedTextField(value = range2End, onValueChange = { range2End = it; isRange2EndValid = validateTime(it) }, label = { Text(stringResource(R.string.end)) }, modifier = Modifier
                             .weight(1f)
                             .padding(start = 4.dp), isError = !isRange2EndValid)
                     }
                 } else {
-                    Text("Horario Completo", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    Text(stringResource(R.string.full_sch), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text("Inicio") }, modifier = Modifier
+                        OutlinedTextField(value = range1Start, onValueChange = { range1Start = it; isRange1StartValid = validateTime(it) }, label = { Text(stringResource(R.string.start)) }, modifier = Modifier
                             .weight(1f)
                             .padding(end = 4.dp), isError = !isRange1StartValid)
-                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text("Fin") }, modifier = Modifier
+                        OutlinedTextField(value = range1End, onValueChange = { range1End = it; isRange1EndValid = validateTime(it) }, label = { Text(stringResource(R.string.end)) }, modifier = Modifier
                             .weight(1f)
                             .padding(start = 4.dp), isError = !isRange1EndValid)
                     }
@@ -1904,12 +1974,12 @@ fun TimeRangeSettingsDialog(
                 },
                 enabled = isConfirmEnabled
             ) {
-                Text("Confirmar")
+                Text(stringResource(R.string.accept))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -1919,7 +1989,7 @@ fun TimeRangeSettingsDialog(
 fun TextColorDialog(onDismiss: () -> Unit, onColorSelected: (Color) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Seleccionar color de texto") },
+        title = { Text(stringResource(R.string.color_text_dialog)) },
         text = {
             Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
                 Surface(
@@ -1963,7 +2033,7 @@ fun ColorPickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Seleccionar color") },
+        title = { Text(stringResource(R.string.color_dialog)) },
         text = {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
@@ -1990,7 +2060,7 @@ fun ColorPickerDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cerrar")
+                Text(stringResource(R.string.close))
             }
         }
     )
@@ -2006,23 +2076,23 @@ fun EditCalendarNameDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Editar nombre del calendario") },
+        title = { Text(stringResource(R.string.cal_name_edit)) },
         text = {
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
                 singleLine = true,
-                label = { Text("Nombre") }
+                label = { Text(stringResource(R.string.name)) }
             )
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(text) }) {
-                Text("Confirmar")
+                Text(stringResource(R.string.accept))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -2038,7 +2108,15 @@ fun cambiarPeriodo(fecha: LocalDate, vista: CalendarView, direccion: Int): Local
 
 @Composable
 fun EncabezadoSemana() {
-    val dias = listOf("L", "M", "X", "J", "V", "S", "D")
+    val dias = listOf(
+        stringResource(R.string.day_mon),
+        stringResource(R.string.day_tue),
+        stringResource(R.string.day_wed),
+        stringResource(R.string.day_thu),
+        stringResource(R.string.day_fry),
+        stringResource(R.string.day_sat),
+        stringResource(R.string.day_sun)
+    )
 
     Row(modifier = Modifier.fillMaxWidth()) {
         dias.forEach {
@@ -2060,13 +2138,13 @@ fun VistaDiaria(
     onDateSelected: (LocalDate) -> Unit
 ) {
     val diaSemanaLetra = when (fecha.dayOfWeek.value) {
-        1 -> "L"
-        2 -> "M"
-        3 -> "X"
-        4 -> "J"
-        5 -> "V"
-        6 -> "S"
-        7 -> "D"
+        1 -> stringResource(R.string.day_mon)
+        2 -> stringResource(R.string.day_tue)
+        3 -> stringResource(R.string.day_wed)
+        4 -> stringResource(R.string.day_thu)
+        5 -> stringResource(R.string.day_fry)
+        6 -> stringResource(R.string.day_sat)
+        7 -> stringResource(R.string.day_sun)
         else -> ""
     }
 
@@ -2252,6 +2330,12 @@ fun TimeSlotList(
     preferredSendMethod: SendMethod
 ) {
     val context = LocalContext.current
+
+    val insertedDate = stringResource(R.string.inserted_date)
+    val insertedTime = stringResource(R.string.inserted_time)
+    val mailConcept = stringResource(R.string.mail_concept)
+    val remSend = stringResource(R.string.rem_send)
+
     val is24HourFormat = DateFormat.is24HourFormat(context)
     val formatter = remember(is24HourFormat) {
         DateTimeFormatter.ofPattern(if (is24HourFormat) "HH:mm" else "h:mm a")
@@ -2309,8 +2393,8 @@ fun TimeSlotList(
                             IconButton(
                                 onClick = {
                                     val message = reminderMessage
-                                        .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
-                                        .replace("{hora}", event.time.format(formatter))
+                                        .replace(insertedDate, event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
+                                        .replace(insertedTime, event.time.format(formatter))
 
                                     val phoneNumber = event.phone
                                     val emailAddress = event.email
@@ -2331,7 +2415,8 @@ fun TimeSlotList(
                                         SendMethod.Mail -> {
                                             Intent(Intent.ACTION_SENDTO).apply {
                                                 data = Uri.parse("mailto:$emailAddress")
-                                                putExtra(Intent.EXTRA_SUBJECT, "Recordatorio de cita")
+                                                putExtra(Intent.EXTRA_SUBJECT,
+                                                    mailConcept)
                                                 putExtra(Intent.EXTRA_TEXT, message)
                                             }
                                         }
@@ -2351,14 +2436,16 @@ fun TimeSlotList(
                                             putExtra(Intent.EXTRA_TEXT, message)
                                             type = "text/plain"
                                         }
-                                        context.startActivity(Intent.createChooser(backupIntent, "Enviar recordatorio"))
+                                        context.startActivity(Intent.createChooser(backupIntent,
+                                            remSend
+                                            ))
                                     }
                                 },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Notifications,
-                                    contentDescription = "Recordatorio",
+                                    contentDescription = stringResource(R.string.reminder),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -2406,8 +2493,8 @@ fun TimeSlotList(
                             IconButton(
                                 onClick = {
                                     val message = reminderMessage
-                                        .replace("{fecha}", event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
-                                        .replace("{hora}", event.time.format(formatter))
+                                        .replace(insertedDate, event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
+                                        .replace(insertedTime, event.time.format(formatter))
                                     val phoneNumber = event.phone
                                     val emailAddress = event.email
 
@@ -2427,7 +2514,7 @@ fun TimeSlotList(
                                         SendMethod.Mail -> {
                                             Intent(Intent.ACTION_SENDTO).apply {
                                                 data = Uri.parse("mailto:$emailAddress")
-                                                putExtra(Intent.EXTRA_SUBJECT, "Recordatorio de cita")
+                                                putExtra(Intent.EXTRA_SUBJECT, mailConcept)
                                                 putExtra(Intent.EXTRA_TEXT, message)
                                             }
                                         }
@@ -2447,14 +2534,14 @@ fun TimeSlotList(
                                             putExtra(Intent.EXTRA_TEXT, message)
                                             type = "text/plain"
                                         }
-                                        context.startActivity(Intent.createChooser(backupIntent, "Enviar recordatorio"))
+                                        context.startActivity(Intent.createChooser(backupIntent, remSend))
                                     }
                                 },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Notifications,
-                                    contentDescription = "Recordatorio",
+                                    contentDescription = stringResource(R.string.reminder),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }

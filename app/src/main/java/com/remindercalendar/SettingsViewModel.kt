@@ -1,5 +1,6 @@
 package com.remindercalendar
 
+import android.content.Context
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -17,7 +18,8 @@ enum class DarkModeConfig { LIGHT, DARK, SYSTEM }
 
 class SettingsViewModel(
     private val settingsManager: SettingsManager,
-    private val eventManager: EventManager
+    private val eventManager: EventManager,
+    val context: Context
 ) : ViewModel() {
 
     private val _highlightCalendarOption = MutableStateFlow(false)
@@ -185,11 +187,11 @@ class SettingsViewModel(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = "Hola, te recuerdo tu cita el {fecha} a las {hora}."
+            initialValue = context.getString(R.string.msg2)
         )
 
     val isDateFormatNeeded: StateFlow<Boolean> = reminderMessage
-        .map { it.contains("{fecha}") }
+        .map { it.contains(context.getString(R.string.inserted_date)) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -273,12 +275,13 @@ class SettingsViewModel(
 
 class SettingsViewModelFactory(
     private val settingsManager: SettingsManager,
-    private val eventManager: EventManager
+    private val eventManager: EventManager,
+    val context: Context
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return SettingsViewModel(settingsManager, eventManager) as T
+            return SettingsViewModel(settingsManager, eventManager, context) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
