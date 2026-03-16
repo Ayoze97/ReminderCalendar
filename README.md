@@ -23,8 +23,8 @@ This app was made using GeminiAI
 - READ_CONTACTS (optional)  
   - Is requiered to import contact information from your phone so name, phone and mail can be filled automatically. 
 - READ_CALENDAR & WRITE_CALENDAR  
-  - Is requiered to sync the events so can't lose it and to work with multiple devices.
+  - Is requiered to sync the events so you can't lose it and to work with multiple devices if google account is configured.
  
 ## What's missing?
-- [ ] English translation.
+- ~~[ ] English translation.~~
 - [ ] More send methods.
