@@ -26,5 +26,4 @@ This app was made using GeminiAI
   - Is requiered to sync the events so you can't lose it and to work with multiple devices if google account is configured.
  
 ## What's missing?
-- ~~[ ] English translation.~~
 - [ ] More send methods.
