@@ -2,6 +2,8 @@ package com.remindercalendar
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -55,6 +57,7 @@ class SettingsViewModel(
     fun setDarkMode(config: DarkModeConfig) {
         viewModelScope.launch {
             settingsManager.setDarkMode(config)
+            forceWidgetUpdate(context = context, newDarkMode = config.name)
         }
     }
 
@@ -72,14 +75,14 @@ class SettingsViewModel(
         }
     }
 
-    val preferredSendMethod: StateFlow<SendMethod> = settingsManager.preferredSendMethodFlow
+    val preferredSendMethod: StateFlow<NotificationMethod> = settingsManager.preferredSendMethodFlow
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = SendMethod.SMS
+            initialValue = NotificationMethod.SMS
         )
 
-    fun setPreferredSendMethod(method: SendMethod) {
+    fun setPreferredSendMethod(method: NotificationMethod) {
         viewModelScope.launch {
             settingsManager.setPreferredSendMethod(method)
         }
@@ -101,6 +104,7 @@ class SettingsViewModel(
             } else if (color == Color.White) {
                 settingsManager.setHeaderTextColor(Color.Black)
             }
+            forceWidgetUpdate(context = context, newHeaderColor = color.toArgb())
         }
     }
 
@@ -148,6 +152,7 @@ class SettingsViewModel(
     fun setHeaderTextColor(color: Color) {
         viewModelScope.launch {
             settingsManager.setHeaderTextColor(color)
+            forceWidgetUpdate(context = context, newTextColor = color.toArgb())
         }
     }
 

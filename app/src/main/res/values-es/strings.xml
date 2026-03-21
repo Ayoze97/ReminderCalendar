@@ -93,7 +93,7 @@
     <string name="day_tue">M</string>
     <string name="day_wed">X</string>
     <string name="day_thu">J</string>
-    <string name="day_fry">V</string>
+    <string name="day_fri">V</string>
     <string name="day_sat">S</string>
     <string name="day_sun">D</string>
     <string name="inserted_time">{hora}</string>
@@ -108,4 +108,8 @@
     <string name="cal_name_sel">Mi Calendario</string>
     <string name="msg">Hola, te recuerdo tu cita.</string>
     <string name="msg2">Hola, te recuerdo tu cita el {fecha} a las {hora}.</string>
+    <string name="prev">Anterior</string>
+    <string name="next">Siguiente</string>
+    <string name="no_event">No hay eventos</string>
+    <string name="no_events">No hay eventos</string>
 </resources>

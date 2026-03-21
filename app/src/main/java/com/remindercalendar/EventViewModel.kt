@@ -1,5 +1,7 @@
 package com.remindercalendar
 
+import android.content.Context
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +17,8 @@ import kotlinx.coroutines.withContext
 
 class EventViewModel(
     private val eventManager: EventManager,
-    private val settingsManager: SettingsManager
+    private val settingsManager: SettingsManager,
+    private val context: Context
 ) : ViewModel() {
 
     private val _isReady = MutableStateFlow(false)
@@ -59,6 +62,13 @@ class EventViewModel(
 
     fun refreshEvents() {
         refreshTrigger.value += 1
+        updateWidget()
+    }
+
+    private fun updateWidget() {
+        viewModelScope.launch {
+            ReminderWidget().updateAll(context)
+        }
     }
 
     // --- FUNCIONES DE BORRADO ---
@@ -94,7 +104,9 @@ class EventViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val success = eventManager.updateGoogleEvent(event)
             if (success) {
-                refreshEvents() // Recarga la lista para que la UI se actualice
+                withContext(Dispatchers.Main) {
+                    refreshEvents() // Recarga la lista para que la UI se actualice
+                }
             }
         }
     }

@@ -143,13 +143,15 @@ class SettingsManager(val context: Context) {
     }
 
 
-    val preferredSendMethodFlow: Flow<SendMethod> = dataStore.data.map { preferences ->
-        val methodStr = preferences[PREFERRED_SEND_METHOD_KEY] ?: SendMethod.SMS.name
-        try { SendMethod.valueOf(methodStr) } catch (e: Exception) { SendMethod.SMS }
+    val preferredSendMethodFlow: Flow<NotificationMethod> = dataStore.data.map { preferences ->
+        val methodId = preferences[PREFERRED_SEND_METHOD_KEY] ?: NotificationMethod.SMS.id
+        NotificationMethod.all().find { it.id == methodId } ?: NotificationMethod.SMS
     }
 
-    suspend fun setPreferredSendMethod(method: SendMethod) {
-        dataStore.edit { it[PREFERRED_SEND_METHOD_KEY] = method.name }
+    suspend fun setPreferredSendMethod(method: NotificationMethod) {
+        dataStore.edit { preferences ->
+            preferences[PREFERRED_SEND_METHOD_KEY] = method.id
+        }
     }
 
     // --- COLORES ---

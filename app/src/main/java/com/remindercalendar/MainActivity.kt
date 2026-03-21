@@ -3,7 +3,6 @@ package com.remindercalendar
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.text.format.DateFormat
@@ -56,14 +55,12 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsSuggest
-import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material3.AlertDialog
@@ -108,7 +105,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -139,8 +135,6 @@ enum class CalendarView {
 enum class Screen {
     CALENDAR, SETTINGS
 }
-
-enum class SendMethod { SMS, WhatsApp, Mail }
 
 data class TimeRange(val start: LocalTime, val end: LocalTime)
 data class Event(
@@ -187,7 +181,7 @@ fun MainApp() {
     )
 
     val eventViewModel: EventViewModel = viewModel(
-        factory = EventViewModelFactory(eventManager, settingsManager)
+        factory = EventViewModelFactory(eventManager, settingsManager, context)
     )
     val darkModeConfig: DarkModeConfig by settingsViewModel.darkMode.collectAsState(initial = DarkModeConfig.SYSTEM)
     val calendarName by settingsViewModel.calendarName.collectAsState()
@@ -201,7 +195,7 @@ fun MainApp() {
     val combinedEvents by eventViewModel.allEvents.collectAsState()
     val reminderMessage by settingsViewModel.reminderMessage.collectAsState()
     val dateFormat by settingsViewModel.dateFormat.collectAsState()
-    val preferredSendMethod by settingsViewModel.preferredSendMethod.collectAsState()
+    val preferredSendMethod: NotificationMethod by settingsViewModel.preferredSendMethod.collectAsState()
     val defaultView by settingsViewModel.defaultView.collectAsState()
 
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
@@ -348,7 +342,7 @@ fun CalendarScreen(
     onAddEvent: (Event, Boolean, Long?) -> Unit,
     onUpdateEvent: (Event) -> Unit,
     onDeleteEvent: (Event) -> Unit,
-    preferredSendMethod: SendMethod,
+    preferredSendMethod: NotificationMethod,
     defaultView: CalendarView,
     eventViewModel: EventViewModel,
     settingsViewModel: SettingsViewModel,
@@ -397,26 +391,30 @@ fun CalendarScreen(
                 showEventDialogForTime = null
             },
             onConfirm = { eventName, person, phone, email, time ->
-                if (editingEvent != null) {
-                    val updatedEvent = editingEvent!!.copy(
-                        name = eventName,
-                        person = person,
-                        phone = phone,
-                        email = email,
-                        time = time
-                    )
-                    onUpdateEvent(updatedEvent)
-                } else {
-                    val newEvent = Event(
-                        date = fechaSeleccionada,
-                        time = time,
-                        name = eventName,
-                        person = person,
-                        phone = phone,
-                        email = email
-                    )
-                    onAddEvent(newEvent, true, null)
+                scope.launch {
+                    if (editingEvent != null) {
+                        val updatedEvent = editingEvent!!.copy(
+                            name = eventName,
+                            person = person,
+                            phone = phone,
+                            email = email,
+                            time = time
+                        )
+                        onUpdateEvent(updatedEvent)
+                    } else {
+                        val newEvent = Event(
+                            date = fechaSeleccionada,
+                            time = time,
+                            name = eventName,
+                            person = person,
+                            phone = phone,
+                            email = email
+                        )
+                        onAddEvent(newEvent, true, null)
+                    }
+                    forceWidgetUpdate(context)
                 }
+
                 editingEvent = null
                 showEventDialogForTime = null
             },
@@ -461,14 +459,13 @@ fun CalendarScreen(
                                 duration = SnackbarDuration.Short
                             )
                         }
+                        forceWidgetUpdate(context)
                     }
                 }
                 showDeleteConfirmationDialog = null
                 editingEvent = null
                 showEventDialogForTime = null
             },
-            confirmButtonColor = Color.Red,
-            dismissButtonColor = buttonsColor
         )
     }
 
@@ -859,16 +856,18 @@ fun CalendarScreen(
 @Composable
 fun DeleteConfirmationDialog(
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-    confirmButtonColor: Color = Color.Red,
-    dismissButtonColor: Color = Color.Gray
+    onConfirm: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.del_confirm_warning_header)) },
         text = { Text(stringResource(R.string.del_confirm_warning_msg)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = onConfirm)
+            {
                 Text(stringResource(R.string.del))
             }
         },
@@ -901,8 +900,8 @@ fun SettingsScreen(
     onTimeRangesChange: (List<TimeRange>) -> Unit,
     onReminderMessageChange: (String) -> Unit,
     onDateFormatChange: (String) -> Unit,
-    preferredSendMethod: SendMethod,
-    onPreferredSendMethodChange: (SendMethod) -> Unit,
+    preferredSendMethod: NotificationMethod,
+    onPreferredSendMethodChange: (NotificationMethod) -> Unit,
     darkModeConfig: DarkModeConfig,
     onDarkModeChange: (DarkModeConfig) -> Unit,
     settingsViewModel: SettingsViewModel,
@@ -1198,11 +1197,7 @@ fun SettingsScreen(
                         modifier = Modifier.height(36.dp)
                     ) {
                         Text(
-                            text = when(preferredSendMethod) {
-                                SendMethod.WhatsApp -> "WhatsApp"
-                                SendMethod.SMS -> "SMS"
-                                SendMethod.Mail -> stringResource(R.string.pref_send_method_mail)
-                            },
+                            text = getMethodName(preferredSendMethod),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Icon(
@@ -1216,28 +1211,13 @@ fun SettingsScreen(
                         expanded = expandedEnvio,
                         onDismissRequest = { expandedEnvio = false }
                     ) {
-                        SendMethod.entries.forEach { method ->
+                        NotificationMethod.all().forEach { method ->
                             DropdownMenuItem(
                                 text = {
-                                    Text(
-                                        text = when(method) {
-                                            SendMethod.WhatsApp -> "WhatsApp"
-                                            SendMethod.SMS -> "SMS"
-                                            SendMethod.Mail -> stringResource(R.string.pref_send_method_mail)
-                                        }
-                                    )
+                                    Text(text = getMethodName(method))
                                 },
                                 leadingIcon = {
-                                    val iconPainter = when(method) {
-                                        SendMethod.WhatsApp -> painterResource(id = R.drawable.whatsapp_icon)
-                                        SendMethod.SMS -> rememberVectorPainter(Icons.Default.Sms)
-                                        SendMethod.Mail -> rememberVectorPainter(Icons.Default.Email)
-                                    }
-                                    Icon(
-                                        painter = iconPainter,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    method.DrawIcon(modifier = Modifier.size(18.dp))
                                 },
                                 onClick = {
                                     onPreferredSendMethodChange(method)
@@ -1249,9 +1229,9 @@ fun SettingsScreen(
                 }
             }
 
-            if (preferredSendMethod == SendMethod.Mail) {
+            preferredSendMethod.warning?.let { resId ->
                 Text(
-                    text = stringResource(R.string.stored_mail_warning),
+                    text = stringResource(resId),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp)
@@ -1839,7 +1819,7 @@ fun EventDialog(
             TextButton(
                 onClick = {
                     val cleanTime = eventTime.trim()
-                    val is24Hour = android.text.format.DateFormat.is24HourFormat(context)
+                    val is24Hour = DateFormat.is24HourFormat(context)
                     val pattern = if (is24Hour) "HH:mm" else "h:mm a"
                     val formatter = DateTimeFormatter.ofPattern(pattern, java.util.Locale.US)
 
@@ -2113,7 +2093,7 @@ fun EncabezadoSemana() {
         stringResource(R.string.day_tue),
         stringResource(R.string.day_wed),
         stringResource(R.string.day_thu),
-        stringResource(R.string.day_fry),
+        stringResource(R.string.day_fri),
         stringResource(R.string.day_sat),
         stringResource(R.string.day_sun)
     )
@@ -2142,7 +2122,7 @@ fun VistaDiaria(
         2 -> stringResource(R.string.day_tue)
         3 -> stringResource(R.string.day_wed)
         4 -> stringResource(R.string.day_thu)
-        5 -> stringResource(R.string.day_fry)
+        5 -> stringResource(R.string.day_fri)
         6 -> stringResource(R.string.day_sat)
         7 -> stringResource(R.string.day_sun)
         else -> ""
@@ -2327,7 +2307,7 @@ fun TimeSlotList(
     dateFormat: String,
     onTimeSelected: (LocalTime) -> Unit,
     onEventSelected: (Event) -> Unit,
-    preferredSendMethod: SendMethod
+    preferredSendMethod: NotificationMethod
 ) {
     val context = LocalContext.current
 
@@ -2396,37 +2376,12 @@ fun TimeSlotList(
                                         .replace(insertedDate, event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
                                         .replace(insertedTime, event.time.format(formatter))
 
-                                    val phoneNumber = event.phone
-                                    val emailAddress = event.email
-
-                                    val intent = when (preferredSendMethod) {
-                                        SendMethod.WhatsApp -> {
-                                            Intent(Intent.ACTION_VIEW).apply {
-                                                val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
-                                                data = Uri.parse(url)
-                                            }
-                                        }
-                                        SendMethod.SMS -> {
-                                            Intent(Intent.ACTION_SENDTO).apply {
-                                                data = Uri.parse("smsto:$phoneNumber")
-                                                putExtra("sms_body", message)
-                                            }
-                                        }
-                                        SendMethod.Mail -> {
-                                            Intent(Intent.ACTION_SENDTO).apply {
-                                                data = Uri.parse("mailto:$emailAddress")
-                                                putExtra(Intent.EXTRA_SUBJECT,
-                                                    mailConcept)
-                                                putExtra(Intent.EXTRA_TEXT, message)
-                                            }
-                                        }
-                                        else -> {
-                                            Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_TEXT, message)
-                                            }
-                                        }
-                                    }
+                                    val intent = preferredSendMethod.intentBuilder (
+                                        message,
+                                        event.phone,
+                                        event.email,
+                                        mailConcept
+                                    )
 
                                     try {
                                         context.startActivity(intent)
@@ -2495,36 +2450,13 @@ fun TimeSlotList(
                                     val message = reminderMessage
                                         .replace(insertedDate, event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
                                         .replace(insertedTime, event.time.format(formatter))
-                                    val phoneNumber = event.phone
-                                    val emailAddress = event.email
 
-                                    val intent = when (preferredSendMethod) {
-                                        SendMethod.WhatsApp -> {
-                                            Intent(Intent.ACTION_VIEW).apply {
-                                                val url = "https://api.whatsapp.com/send?phone=$phoneNumber&text=${Uri.encode(message)}"
-                                                data = Uri.parse(url)
-                                            }
-                                        }
-                                        SendMethod.SMS -> {
-                                            Intent(Intent.ACTION_SENDTO).apply {
-                                                data = Uri.parse("smsto:$phoneNumber")
-                                                putExtra("sms_body", message)
-                                            }
-                                        }
-                                        SendMethod.Mail -> {
-                                            Intent(Intent.ACTION_SENDTO).apply {
-                                                data = Uri.parse("mailto:$emailAddress")
-                                                putExtra(Intent.EXTRA_SUBJECT, mailConcept)
-                                                putExtra(Intent.EXTRA_TEXT, message)
-                                            }
-                                        }
-                                        else -> {
-                                            Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_TEXT, message)
-                                            }
-                                        }
-                                    }
+                                    val intent = preferredSendMethod.intentBuilder (
+                                        message,
+                                        event.phone,
+                                        event.email,
+                                        mailConcept
+                                    )
 
                                     try {
                                         context.startActivity(intent)
@@ -2561,5 +2493,14 @@ fun TimeSlotList(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun getMethodName(method: NotificationMethod): String {
+    return when (val name = method.name) {
+        is Int -> stringResource(name)
+        is String -> name
+        else -> ""
     }
 }

@@ -93,7 +93,7 @@
     <string name="day_tue">T</string>
     <string name="day_wed">W</string>
     <string name="day_thu">R</string>
-    <string name="day_fry">F</string>
+    <string name="day_fri">F</string>
     <string name="day_sat">S</string>
     <string name="day_sun">U</string>
     <string name="inserted_time">{time}</string>
@@ -108,4 +108,8 @@
     <string name="cal_name_sel">My Calendar</string>
     <string name="msg">Hi, I\'m reminding of your appointment.</string>
     <string name="msg2">Hi, I\'m reminding of your appointment on {date} at {time}.</string>
+    <string name="next">Next</string>
+    <string name="prev">Previous</string>
+    <string name="no_event">There are no events</string>
+    <string name="no_events">There are no events</string>
 </resources>
