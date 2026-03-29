@@ -112,4 +112,10 @@
     <string name="prev">Previous</string>
     <string name="no_event">There are no events</string>
     <string name="no_events">There are no events</string>
+    <string name="current_ver">Current version: %s</string>
+    <string name="check_upd">Check for updates</string>
+    <string name="new_ver">New version available: %s!</string>
+    <string name="open_browser">Open in browser</string>
+    <string name="last_ver">Already in the last version</string>
+    <string name="check_error">Error while checking</string>
 </resources>

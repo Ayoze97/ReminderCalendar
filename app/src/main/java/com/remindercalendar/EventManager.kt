@@ -161,7 +161,7 @@ class EventManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("EventManager", "Error cargando eventos de Google: ${e.message}")
+
         }
 
         return googleEvents
@@ -173,7 +173,7 @@ class EventManager(private val context: Context) {
             val rows = context.contentResolver.delete(deleteUri, null, null)
             rows > 0
         } catch (e: Exception) {
-            android.util.Log.e("EventManager", "Error al borrar evento: ${e.message}")
+
             false
         }
     }
@@ -211,13 +211,12 @@ class EventManager(private val context: Context) {
             val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)
 
             if (uri != null) {
-                android.util.Log.d("GoogleSync", "✅ ÉXITO: ID ${uri.lastPathSegment}")
                 uri.lastPathSegment?.toLong()
             } else {
                 null
             }
         } catch (e: Exception) {
-            android.util.Log.e("GoogleSync", "❌ ERROR: ${e.message}")
+
             null
         }
     }

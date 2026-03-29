@@ -1,11 +1,18 @@
 package com.remindercalendar
 
 import android.Manifest
+import android.app.Application
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.text.format.DateFormat
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -55,6 +62,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
@@ -64,7 +72,12 @@ import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.ViewDay
 import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -114,9 +127,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.remindercalendar.ui.theme.ReminderCalendarTheme
 import kotlinx.coroutines.Dispatchers
@@ -150,10 +165,22 @@ data class Event(
 )
 
 class MainActivity : ComponentActivity() {
+
+    private val onDownloadComplete = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+
+            val viewModel = ViewModelProvider(this@MainActivity)[SettingsViewModel::class.java]
+            viewModel.installApk(context)
+        }
+    }
+
     private val eventViewModel: EventViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        registerReceiver(onDownloadComplete, filter, RECEIVER_EXPORTED)
 
         splashScreen.setKeepOnScreenCondition {
             !eventViewModel.isReady.value
@@ -164,6 +191,12 @@ class MainActivity : ComponentActivity() {
             MainApp()
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(onDownloadComplete)
+    }
+
 }
 
 @Composable
@@ -174,10 +207,11 @@ fun MainApp() {
     val grantPermissionWarning = stringResource(R.string.grant_perm_warning)
     val selStorage = stringResource(R.string.select_storage)
 
+    val application = context.applicationContext as Application
     val settingsManager = remember { SettingsManager(context) }
     val eventManager = remember { EventManager(context) }
     val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModelFactory(settingsManager, eventManager, context) // <--- Añadido eventManager
+        factory = SettingsViewModelFactory(application, settingsManager, eventManager, context)
     )
 
     val eventViewModel: EventViewModel = viewModel(
@@ -391,9 +425,10 @@ fun CalendarScreen(
                 showEventDialogForTime = null
             },
             onConfirm = { eventName, person, phone, email, time ->
+                val currentEditingEvent = editingEvent
                 scope.launch {
-                    if (editingEvent != null) {
-                        val updatedEvent = editingEvent!!.copy(
+                    if (currentEditingEvent != null) {
+                        val updatedEvent = currentEditingEvent.copy(
                             name = eventName,
                             person = person,
                             phone = phone,
@@ -913,6 +948,7 @@ fun SettingsScreen(
         onBack()
     }
 
+    val context = LocalContext.current
     var showNameDialog by remember { mutableStateOf(false) }
     var showReminderMessageDialog by remember { mutableStateOf(false) }
     var showDateFormatDialog by remember { mutableStateOf(false) }
@@ -920,12 +956,9 @@ fun SettingsScreen(
     var showTextColorDialog by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     var isCurrentDayColor by remember { mutableStateOf(false) }
     var showTimeRangeDialog by remember { mutableStateOf(false) }
-    //var text by remember { mutableStateOf(dateFormat) }
     var expanded by remember { mutableStateOf(false) }
-
     val invFormat = stringResource(R.string.inv_format)
     val permWarning = stringResource(R.string.permission_warning)
-
     val interactionSource = remember { MutableInteractionSource() }
     val highlightState = settingsViewModel.highlightCalendarOption.collectAsState()
     val highlight = highlightState.value
@@ -933,6 +966,10 @@ fun SettingsScreen(
     val defaultView by settingsViewModel.defaultView.collectAsState()
     var showCalendarDialog by remember { mutableStateOf(false) }
     val isDateNeeded = reminderMessage.contains(stringResource(R.string.inserted_date), ignoreCase = true)
+    val updateStatus by settingsViewModel.updateStatus.collectAsState()
+    val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+    val currentVersionName = packageInfo.versionName
+    val currentVersion = "v$currentVersionName"
     val datePreview = remember(dateFormat) {
         try {
             java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(dateFormat))
@@ -940,7 +977,6 @@ fun SettingsScreen(
             invFormat
         }
     }
-
     val animatedColor by animateColorAsState(
         targetValue = if (highlight) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
         else Color.Transparent,
@@ -1037,8 +1073,8 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween // Separa el texto a la izquierda y el menú a la derecha
-            ) {
+                horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                 Text(
                     text = stringResource(R.string.app_theme),
                     style = MaterialTheme.typography.titleMedium,
@@ -1312,7 +1348,6 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
 
-            // Estado para controlar si el diálogo está abierto
             var showCalendarDialog by remember { mutableStateOf(false) }
             val context = LocalContext.current
             val launcher = rememberLauncherForActivityResult(
@@ -1333,8 +1368,8 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .background(animatedColor)
                     .clickable(
-                        interactionSource = interactionSource, // <--- VINCULAMOS AQUÍ
-                        indication = ripple(), // <--- EFECTO ONDA
+                        interactionSource = interactionSource,
+                        indication = ripple(),
                         onClick = {
                             // Tu lógica de permisos existente se mantiene intacta
                             val hasPermission = ContextCompat.checkSelfPermission(
@@ -1368,7 +1403,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Icon(
-                    imageVector = Icons.Default.ChevronRight, // O ArrowForwardIos
+                    imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
                 )
@@ -1404,7 +1439,6 @@ fun SettingsScreen(
                                         Text(text = calendar.accountName, style = MaterialTheme.typography.bodySmall)
                                     }
 
-                                    // Usamos RadioButton para indicar que solo se elige UNO
                                     RadioButton(
                                         selected = calendar.id == selectedCalendarId,
                                         onClick = {
@@ -1521,7 +1555,81 @@ fun SettingsScreen(
                     shape = CircleShape,
                     color = currentDayColor,
                     border = BorderStroke(1.dp, Color.LightGray)
-                ) {}
+                ) {
+                }
+            }
+            HorizontalDivider()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.current_ver, currentVersion),
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { settingsViewModel.checkForUpdates(currentVersion) },
+                    enabled = updateStatus !is SettingsViewModel.UpdateStatus.Checking,
+                    colors = ButtonDefaults.buttonColors(containerColor = buttonsColor)
+                ) {
+                    Text(
+                        text = stringResource(R.string.check_upd),
+                        color = buttonsTextColor
+                    )
+                }
+
+                when (val status = updateStatus) {
+                    is SettingsViewModel.UpdateStatus.Checking -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    is SettingsViewModel.UpdateStatus.NewVersionAvailable -> {
+                        Column(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = stringResource(R.string.new_ver, status.version),
+                                color = Color.Green,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Button(
+                                onClick = {
+                                    settingsViewModel.downloadAndInstallApk(status.url)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = buttonsColor,
+                                    contentColor = buttonsTextColor
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Descargar e Instalar")
+                            }
+
+                            TextButton(onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(status.url))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+
+                                }
+                            }) {
+                                Text(stringResource(R.string.open_browser), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    is SettingsViewModel.UpdateStatus.UpToDate -> Text(stringResource(R.string.last_ver), color = Color.Gray)
+                    is SettingsViewModel.UpdateStatus.Error -> Text(stringResource(R.string.check_error), color = Color.Red)
+                    else -> {}
+                }
             }
         }
     }
@@ -1689,10 +1797,8 @@ fun EventDialog(
                     val id = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
                     val name = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME))
 
-                    // 1. Actualizamos el nombre
                     person = name
 
-                    // 2. Buscamos el TELÉFONO
                     context.contentResolver.query(
                         ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                         null,
@@ -1704,14 +1810,12 @@ fun EventDialog(
                             val number = phoneCursor.getString(
                                 phoneCursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
                             )
-                            // Limpiamos el número para evitar errores en WhatsApp (quitamos espacios y símbolos)
                             phone = number.replace(Regex("[^0-9]"), "")
                         } else {
-                            phone = "" // Limpiar si el contacto no tiene teléfono
+                            phone = ""
                         }
                     }
 
-                    // 3. Buscamos el EMAIL
                     context.contentResolver.query(
                         ContactsContract.CommonDataKinds.Email.CONTENT_URI,
                         null,
@@ -1725,7 +1829,7 @@ fun EventDialog(
                             )
                             email = mail
                         } else {
-                            email = "" // Limpiar si el contacto no tiene email
+                            email = ""
                         }
                     }
                 }
@@ -1757,6 +1861,17 @@ fun EventDialog(
     }
 
     val isConfirmEnabled = eventName.isNotBlank() && isTimeValid
+
+    fun adjustTime(currentTime: String, minutesToAdd: Int, is24Hour: Boolean): String {
+        val formatter = DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "hh:mm a")
+        return try {
+            val time = LocalTime.parse(currentTime, formatter)
+            val newTime = time.plusMinutes(minutesToAdd.toLong())
+            newTime.format(formatter)
+        } catch (e: Exception) {
+            currentTime
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1793,9 +1908,51 @@ fun EventDialog(
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = eventTime, onValueChange = { eventTime = it; isTimeValid = validateTime(it, is24Hour) }, label = { Text(
-                    stringResource(R.string.hour)
-                ) }, isError = !isTimeValid)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = eventTime,
+                        onValueChange = {
+                            eventTime = it
+                            isTimeValid = validateTime(it, is24Hour)
+                        },
+                        label = { Text(stringResource(R.string.hour)) },
+                        isError = !isTimeValid,
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AdjustmentButton("-1H") {
+                                eventTime = adjustTime(eventTime, -60, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
+                            AdjustmentButton("+1H") {
+                                eventTime = adjustTime(eventTime, 60, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AdjustmentButton("-30min") {
+                                eventTime = adjustTime(eventTime, -30, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
+                            AdjustmentButton("+30min") {
+                                eventTime = adjustTime(eventTime, 30, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
@@ -1853,6 +2010,24 @@ fun EventDialog(
             }
         }
     )
+}
+
+@Composable
+fun AdjustmentButton(label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.size(width = 50.dp, height = 32.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable
