@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.ViewDay
@@ -119,6 +120,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.modifier.modifierLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -236,7 +238,6 @@ fun MainApp() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            // Si el permiso se acaba de dar, comprobamos si falta la cuenta
             if (settingsViewModel.selectedCalendarId.value == null) {
                 settingsViewModel.setShowCalendarDialog(true)
             }
@@ -254,20 +255,15 @@ fun MainApp() {
     ReminderCalendarTheme(darkTheme = useDarkTheme) {
         val activity = LocalActivity.current
         if (activity != null) {
-            // Escuchamos los cambios en el color del encabezado
             @Suppress("DEPRECATION")
             LaunchedEffect(headerColor, headerTextColor, useDarkTheme) {
                 val window = activity.window
 
-                // Esta es la forma actual de gestionar el color de fondo sin que "grite" el IDE
                 window.apply {
-                    // Sigue siendo necesario para el fondo, pero asegúrate de que
-                    // no estás usando una versión de API extremadamente antigua
                     statusBarColor = headerColor.toArgb()
                     window.navigationBarColor = Color.Transparent.toArgb() // O el color de tu fondo
                 }
 
-                // Para el estilo de los iconos (claro/oscuro)
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.isAppearanceLightStatusBars = !useDarkTheme && headerTextColor == Color.Black
             }
@@ -290,23 +286,19 @@ fun MainApp() {
                     cambiarPeriodo = ::cambiarPeriodo,
                     events = combinedEvents,
                     onAddEvent = { event, sync, _ ->
-                        // Obtenemos el ID real del ViewModel
                         val calendarId = settingsViewModel.selectedCalendarId.value
 
-                        // Verificamos si tenemos permiso de escritura usando el 'context' obtenido arriba
                         val hasWritePermission = ContextCompat.checkSelfPermission(
                             context,
-                            android.Manifest.permission.WRITE_CALENDAR
-                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            Manifest.permission.WRITE_CALENDAR
+                        ) == PackageManager.PERMISSION_GRANTED
 
                         if (!hasWritePermission) {
-                            // Para lanzar el permiso, usamos el launcher (que sí existe en el scope de la Activity)
-                            calendarPermissionLauncher.launch(android.Manifest.permission.WRITE_CALENDAR)
-                            android.widget.Toast.makeText(context, grantPermissionWarning, android.widget.Toast.LENGTH_LONG).show()
+                            calendarPermissionLauncher.launch(Manifest.permission.WRITE_CALENDAR)
+                            Toast.makeText(context, grantPermissionWarning, Toast.LENGTH_LONG).show()
                         } else if (calendarId == null) {
-                            // Abrimos el selector si no hay cuenta
                             settingsViewModel.setShowCalendarDialog(true)
-                            android.widget.Toast.makeText(context, selStorage, android.widget.Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, selStorage, Toast.LENGTH_LONG).show()
                         } else {
                             eventViewModel.addEvent(event, sync, calendarId)
                         }
@@ -389,6 +381,8 @@ fun CalendarScreen(
     var editingEvent by remember { mutableStateOf<Event?>(null) }
     var showEventDialogForTime by remember { mutableStateOf<LocalTime?>(null) }
     var showDeleteConfirmationDialog by remember { mutableStateOf<Event?>(null) }
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     val selectedCalendarId by settingsViewModel.selectedCalendarId.collectAsState()
     val context = LocalContext.current
     val eventManager = remember { EventManager(context) }
@@ -504,6 +498,17 @@ fun CalendarScreen(
         )
     }
 
+    val filteredEvents = remember(events, searchQuery) {
+        if (searchQuery.isEmpty()) {
+            events
+        } else {
+            events.filter { evento ->
+                evento.name.contains(searchQuery, ignoreCase = true) ||
+                        evento.person.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = drawerState.isOpen,
@@ -608,21 +613,6 @@ fun CalendarScreen(
                             Icon(Icons.Default.Menu, contentDescription = null, tint = headerTextColor)
                         }
                     },
-                    actions = {
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .background(buttonsColor, RoundedCornerShape(8.dp))
-                                .clickable(onClick = { fechaSeleccionada = LocalDate.now() })
-                        ) {
-                            Text(
-                                text = stringResource(R.string.today),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = buttonsTextColor,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
-                        }
-                    },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = headerColor)
                 )
             }
@@ -641,6 +631,8 @@ fun CalendarScreen(
                             color = headerColor,
                             shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
                         )
+                        .padding(end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     ExposedDropdownMenuBox(
                         expanded = expanded,
@@ -711,6 +703,34 @@ fun CalendarScreen(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    IconButton(
+                        onClick = {
+                            showSearchDialog = true
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = stringResource(R.string.search),
+                            tint = buttonsTextColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .background(buttonsColor, RoundedCornerShape(8.dp))
+                            .clickable(onClick = { fechaSeleccionada = LocalDate.now() })
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.today),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = buttonsTextColor,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -778,25 +798,20 @@ fun CalendarScreen(
                             reminderMessage = reminderMessage,
                             dateFormat = dateFormat,
                             onTimeSelected = { time ->
-                                // 1. Verificamos permisos de escritura
                                 val hasWritePermission = ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.WRITE_CALENDAR
                                 ) == PackageManager.PERMISSION_GRANTED
 
-                                // 2. Verificamos si hay una cuenta seleccionada (usando el State de tu ViewModel)
                                 val hasAccount = settingsViewModel.selectedCalendarId.value != null
 
                                 if (hasWritePermission && hasAccount) {
                                     showEventDialogForTime = time
                                 } else {
-                                    // FALLA ALGO: Activamos el auto-selector y navegamos a ajustes
                                     settingsViewModel.triggerCalendarSelector()
 
-                                    // Mostramos un aviso rápido al usuario
                                     Toast.makeText(context,calAccSet, Toast.LENGTH_SHORT).show()
 
-                                    // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
                                     onNavigateToSettings()
                                 }
                             },
@@ -817,25 +832,20 @@ fun CalendarScreen(
                             reminderMessage = reminderMessage,
                             dateFormat = dateFormat,
                             onTimeSelected = { time ->
-                                // 1. Verificamos permisos de escritura
                                 val hasWritePermission = ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.WRITE_CALENDAR
                                 ) == PackageManager.PERMISSION_GRANTED
 
-                                // 2. Verificamos si hay una cuenta seleccionada (usando el State de tu ViewModel)
                                 val hasAccount = settingsViewModel.selectedCalendarId.value != null
 
                                 if (hasWritePermission && hasAccount) {
                                     showEventDialogForTime = time
                                 } else {
-                                    // FALLA ALGO: Activamos el auto-selector y navegamos a ajustes
                                     settingsViewModel.triggerCalendarSelector()
 
-                                    // Mostramos un aviso rápido al usuario
                                     Toast.makeText(context,calAccSet, Toast.LENGTH_SHORT).show()
 
-                                    // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
                                     onNavigateToSettings()
                                 }
                             },
@@ -856,25 +866,20 @@ fun CalendarScreen(
                             reminderMessage = reminderMessage,
                             dateFormat = dateFormat,
                             onTimeSelected = { time ->
-                                // 1. Verificamos permisos de escritura
                                 val hasWritePermission = ContextCompat.checkSelfPermission(
                                     context,
                                     Manifest.permission.WRITE_CALENDAR
                                 ) == PackageManager.PERMISSION_GRANTED
 
-                                // 2. Verificamos si hay una cuenta seleccionada (usando el State de tu ViewModel)
                                 val hasAccount = settingsViewModel.selectedCalendarId.value != null
 
                                 if (hasWritePermission && hasAccount) {
                                     showEventDialogForTime = time
                                 } else {
-                                    // FALLA ALGO: Activamos el auto-selector y navegamos a ajustes
                                     settingsViewModel.triggerCalendarSelector()
 
-                                    // Mostramos un aviso rápido al usuario
                                     Toast.makeText(context,calAccSet, Toast.LENGTH_SHORT).show()
 
-                                    // Llamamos a la función de navegación que tengas (ej. de tu NavHost)
                                     onNavigateToSettings()
                                 }
                             },
@@ -886,6 +891,17 @@ fun CalendarScreen(
             }
         }
     }
+
+    if (showSearchDialog) {
+        SearchDialog(
+            allEvents = events,
+            onDismiss = { showSearchDialog = false },
+            onEventClick = { event ->
+                fechaSeleccionada = event.date
+            }
+        )
+    }
+
 }
 
 @Composable
@@ -1934,18 +1950,26 @@ fun EventDialog(
                                 eventTime = adjustTime(eventTime, -60, is24Hour)
                                 isTimeValid = validateTime(eventTime, is24Hour)
                             }
-                            AdjustmentButton("+1H") {
-                                eventTime = adjustTime(eventTime, 60, is24Hour)
-                                isTimeValid = validateTime(eventTime, is24Hour)
-                            }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             AdjustmentButton("-30min") {
                                 eventTime = adjustTime(eventTime, -30, is24Hour)
                                 isTimeValid = validateTime(eventTime, is24Hour)
                             }
+                            AdjustmentButton("-15min") {
+                                eventTime = adjustTime(eventTime, -15, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AdjustmentButton("+1H") {
+                                eventTime = adjustTime(eventTime, 60, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
                             AdjustmentButton("+30min") {
                                 eventTime = adjustTime(eventTime, 30, is24Hour)
+                                isTimeValid = validateTime(eventTime, is24Hour)
+                            }
+                            AdjustmentButton("+15min") {
+                                eventTime = adjustTime(eventTime, 15, is24Hour)
                                 isTimeValid = validateTime(eventTime, is24Hour)
                             }
                         }

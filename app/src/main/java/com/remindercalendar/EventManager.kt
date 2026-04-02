@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.provider.CalendarContract
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 class EventManager(private val context: Context) {
@@ -81,8 +82,12 @@ class EventManager(private val context: Context) {
         val uri = CalendarContract.Events.CONTENT_URI
 
         val now = System.currentTimeMillis()
-        val startRange = now - (30L * 24 * 60 * 60 * 1000)
-        val endRange = now + (180L * 24 * 60 * 60 * 1000)
+
+        val startRange = LocalDateTime.now().minusYears(1)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val endRange = LocalDateTime.now().plusYears(2)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
         val selection = "${CalendarContract.Events.CALENDAR_ID} IN (${selectedIds.joinToString(",")}) " +
                 "AND ${CalendarContract.Events.DTSTART} >= ? " +
@@ -95,7 +100,7 @@ class EventManager(private val context: Context) {
             CalendarContract.Events.TITLE,
             CalendarContract.Events.DTSTART,
             CalendarContract.Events.DESCRIPTION,
-            CalendarContract.Events.CALENDAR_ID // Añadimos esto para mantener el ID del calendario
+            CalendarContract.Events.CALENDAR_ID
         )
 
         try {
@@ -110,8 +115,6 @@ class EventManager(private val context: Context) {
                     while (cursor.moveToNext()) {
                         val description = cursor.getString(descIdx) ?: ""
 
-                        // --- Lógica de extracción de datos ---
-                        // Buscamos lo que guardamos en la descripción al crear el evento
                         var extractedPerson = ""
                         var extractedPhone = ""
                         var extractedEmail = ""
