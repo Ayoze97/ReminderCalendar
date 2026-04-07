@@ -19,7 +19,7 @@ This app was made using GeminiAI
 - Create an event by clicking on the hours list and set the event name and contact information.
 - Hit the **bell** that appears next to the event to **automatically** open the desired app with your message ready to send.
 
-## Important permissions Etar requires
+## Important permissions that requires
 - READ_CONTACTS (optional)  
   - Is requiered to import contact information from your phone so name, phone and mail can be filled automatically. 
 - READ_CALENDAR & WRITE_CALENDAR  
