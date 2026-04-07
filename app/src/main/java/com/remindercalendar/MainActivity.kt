@@ -12,7 +12,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.text.format.DateFormat
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -77,8 +76,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
-import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -120,8 +117,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.modifier.modifierLocalOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -230,6 +227,11 @@ fun MainApp() {
     val selectedCalendarId by settingsViewModel.selectedCalendarId.collectAsState()
     val combinedEvents by eventViewModel.allEvents.collectAsState()
     val reminderMessage by settingsViewModel.reminderMessage.collectAsState()
+    val reminderMessage2 by settingsViewModel.reminderMessage2.collectAsState()
+    val daysThreshold = settingsViewModel.daysThreshold.collectAsState().value
+    val onThresholdChange: (Int) -> Unit = { days ->
+        settingsViewModel.setReminderDaysThreshold(days)
+    }
     val dateFormat by settingsViewModel.dateFormat.collectAsState()
     val preferredSendMethod: NotificationMethod by settingsViewModel.preferredSendMethod.collectAsState()
     val defaultView by settingsViewModel.defaultView.collectAsState()
@@ -261,7 +263,7 @@ fun MainApp() {
 
                 window.apply {
                     statusBarColor = headerColor.toArgb()
-                    window.navigationBarColor = Color.Transparent.toArgb() // O el color de tu fondo
+                    window.navigationBarColor = Color.Transparent.toArgb()
                 }
 
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -279,7 +281,9 @@ fun MainApp() {
                     headerTextColor = headerTextColor,
                     buttonsTextColor = buttonsTextColor,
                     timeRanges = timeRanges,
-                    reminderMessage = reminderMessage,
+                    getReminderMessageFiltered = { date ->
+                        settingsViewModel.getReminderMessageFiltered(date)
+                    },
                     dateFormat = dateFormat,
                     defaultView = defaultView,
                     onSettingsClick = { currentScreen = Screen.SETTINGS },
@@ -324,6 +328,8 @@ fun MainApp() {
                         buttonsTextColor = buttonsTextColor,
                         timeRanges = timeRanges,
                         reminderMessage = reminderMessage,
+                        reminderMessage2 = reminderMessage2,
+                        daysThreshold = daysThreshold,
                         dateFormat = dateFormat,
                         onCalendarNameChange = { settingsViewModel.setCalendarName(it) },
                         onHeaderColorChange = { settingsViewModel.setHeaderColor(it) },
@@ -333,6 +339,10 @@ fun MainApp() {
                         onButtonsTextColorChange = { settingsViewModel.setButtonsTextColor(it) },
                         onTimeRangesChange = { settingsViewModel.setTimeRanges(it) },
                         onReminderMessageChange = { settingsViewModel.setReminderMessage(it) },
+                        onReminderMessageChange2 = { settingsViewModel.setReminderMessage2(it) },
+                        onThresholdChange = { days ->
+                            settingsViewModel.setReminderDaysThreshold(days)
+                        },
                         onDateFormatChange = { settingsViewModel.setDateFormat(it) },
                         preferredSendMethod = preferredSendMethod,
                         onPreferredSendMethodChange = { method ->
@@ -361,7 +371,7 @@ fun CalendarScreen(
     buttonsTextColor: Color,
     timeRanges: List<TimeRange>,
     events: List<Event>,
-    reminderMessage: String,
+    getReminderMessageFiltered: (LocalDate) -> String,
     dateFormat: String,
     onSettingsClick: () -> Unit,
     cambiarPeriodo: (LocalDate, CalendarView, Int) -> LocalDate,
@@ -795,7 +805,9 @@ fun CalendarScreen(
                         TimeSlotList(
                             timeRanges = timeRanges,
                             events = eventsForSelectedDate,
-                            reminderMessage = reminderMessage,
+                            getReminderMessageFiltered = { fecha ->
+                                settingsViewModel.getReminderMessageFiltered(fecha)
+                            },
                             dateFormat = dateFormat,
                             onTimeSelected = { time ->
                                 val hasWritePermission = ContextCompat.checkSelfPermission(
@@ -829,7 +841,9 @@ fun CalendarScreen(
                         TimeSlotList(
                             timeRanges = timeRanges,
                             events = eventsForSelectedDate,
-                            reminderMessage = reminderMessage,
+                            getReminderMessageFiltered = { fecha ->
+                                settingsViewModel.getReminderMessageFiltered(fecha)
+                            },
                             dateFormat = dateFormat,
                             onTimeSelected = { time ->
                                 val hasWritePermission = ContextCompat.checkSelfPermission(
@@ -863,7 +877,9 @@ fun CalendarScreen(
                         TimeSlotList(
                             timeRanges = timeRanges,
                             events = eventsForSelectedDate,
-                            reminderMessage = reminderMessage,
+                            getReminderMessageFiltered = { fecha ->
+                                settingsViewModel.getReminderMessageFiltered(fecha)
+                            },
                             dateFormat = dateFormat,
                             onTimeSelected = { time ->
                                 val hasWritePermission = ContextCompat.checkSelfPermission(
@@ -941,6 +957,8 @@ fun SettingsScreen(
     buttonsTextColor: Color,
     timeRanges: List<TimeRange>,
     reminderMessage: String,
+    reminderMessage2: String,
+    daysThreshold: Int,
     dateFormat: String,
     onCalendarNameChange: (String) -> Unit,
     onHeaderColorChange: (Color) -> Unit,
@@ -950,6 +968,8 @@ fun SettingsScreen(
     onButtonsTextColorChange: (Color) -> Unit,
     onTimeRangesChange: (List<TimeRange>) -> Unit,
     onReminderMessageChange: (String) -> Unit,
+    onReminderMessageChange2: (String) -> Unit,
+    onThresholdChange: (Int) -> Unit,
     onDateFormatChange: (String) -> Unit,
     preferredSendMethod: NotificationMethod,
     onPreferredSendMethodChange: (NotificationMethod) -> Unit,
@@ -967,6 +987,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showNameDialog by remember { mutableStateOf(false) }
     var showReminderMessageDialog by remember { mutableStateOf(false) }
+    var showReminderMessageDialog2 by remember { mutableStateOf(false) }
     var showDateFormatDialog by remember { mutableStateOf(false) }
     var colorToEdit by remember { mutableStateOf<((Color) -> Unit)?>(null) }
     var showTextColorDialog by remember { mutableStateOf<((Color) -> Unit)?>(null) }
@@ -981,14 +1002,15 @@ fun SettingsScreen(
     val forceOpen by settingsViewModel.forceShowCalendarSelector.collectAsState()
     val defaultView by settingsViewModel.defaultView.collectAsState()
     var showCalendarDialog by remember { mutableStateOf(false) }
-    val isDateNeeded = reminderMessage.contains(stringResource(R.string.inserted_date), ignoreCase = true)
+    var showThresholdDialog by remember { mutableStateOf(false) }
+    val isDateNeeded = reminderMessage.contains(stringResource(R.string.inserted_date), ignoreCase = true) || reminderMessage2.contains(stringResource(R.string.inserted_date), ignoreCase = true)
     val updateStatus by settingsViewModel.updateStatus.collectAsState()
     val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
     val currentVersionName = packageInfo.versionName
     val currentVersion = "v$currentVersionName"
     val datePreview = remember(dateFormat) {
         try {
-            java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(dateFormat))
+            LocalDate.now().format(DateTimeFormatter.ofPattern(dateFormat))
         } catch (e: Exception) {
             invFormat
         }
@@ -1003,9 +1025,7 @@ fun SettingsScreen(
     LaunchedEffect(forceOpen) {
         if (forceOpen) {
             delay(800)
-            // Activamos el estado que abre tu AlertDialog actual
             showCalendarDialog = true
-            // Limpiamos el trigger para que no se abra cada vez que vuelvas
             settingsViewModel.clearCalendarSelectorTrigger()
         }
     }
@@ -1022,6 +1042,49 @@ fun SettingsScreen(
             currentMessage = reminderMessage,
             onDismiss = { showReminderMessageDialog = false },
             onConfirm = { onReminderMessageChange(it); showReminderMessageDialog = false }
+        )
+    }
+    if (showReminderMessageDialog2) {
+        EditReminderMessageDialog(
+            currentMessage = reminderMessage2,
+            onDismiss = { showReminderMessageDialog2 = false },
+            onConfirm = { onReminderMessageChange2(it); showReminderMessageDialog2 = false }
+        )
+    }
+    if (showThresholdDialog) {
+        var tempDays by remember { mutableStateOf(daysThreshold.toString()) }
+
+        AlertDialog(
+            onDismissRequest = { showThresholdDialog = false },
+            title = { Text(stringResource(R.string.time_until)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.time_until_msg), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempDays,
+                        onValueChange = { if (it.all { char -> char.isDigit() }) tempDays = it },
+                        label = { Text(stringResource(R.string.days)) },
+                        placeholder = { Text("7") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val days = tempDays.toIntOrNull() ?: 7
+                    onThresholdChange(days)
+                    showThresholdDialog = false
+                }) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showThresholdDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
         )
     }
     if (showDateFormatDialog) {
@@ -1187,8 +1250,39 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.rem_msg), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.rem_msg_1), style = MaterialTheme.typography.titleMedium)
                     Text(reminderMessage, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showReminderMessageDialog2 = true }
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.rem_msg_2), style = MaterialTheme.typography.titleMedium)
+                    Text(reminderMessage2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp)
+                    .clickable { showThresholdDialog = true }
+                    .padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.time_until), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                    Text(text = LocalResources.current.getQuantityString(R.plurals.time_until_msg_pv, daysThreshold, daysThreshold), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
             }
@@ -1387,7 +1481,6 @@ fun SettingsScreen(
                         interactionSource = interactionSource,
                         indication = ripple(),
                         onClick = {
-                            // Tu lógica de permisos existente se mantiene intacta
                             val hasPermission = ContextCompat.checkSelfPermission(
                                 context,
                                 Manifest.permission.READ_CALENDAR
@@ -2502,7 +2595,7 @@ fun VistaMensual(
 fun TimeSlotList(
     timeRanges: List<TimeRange>,
     events: List<Event>,
-    reminderMessage: String,
+    getReminderMessageFiltered: (LocalDate) -> String,
     dateFormat: String,
     onTimeSelected: (LocalTime) -> Unit,
     onEventSelected: (Event) -> Unit,
@@ -2571,7 +2664,7 @@ fun TimeSlotList(
                         ) {
                             IconButton(
                                 onClick = {
-                                    val message = reminderMessage
+                                    val message = getReminderMessageFiltered(event.date)
                                         .replace(insertedDate, event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
                                         .replace(insertedTime, event.time.format(formatter))
 
@@ -2646,7 +2739,7 @@ fun TimeSlotList(
                         ) {
                             IconButton(
                                 onClick = {
-                                    val message = reminderMessage
+                                    val message = getReminderMessageFiltered(event.date)
                                         .replace(insertedDate, event.date.format(DateTimeFormatter.ofPattern(dateFormat)))
                                         .replace(insertedTime, event.time.format(formatter))
 

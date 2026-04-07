@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingQuantity">
     <string name="accept">Aceptar</string>
     <string name="afternoon">Tarde</string>
     <string name="app_name">ReminderCalendar</string>
@@ -37,6 +37,7 @@
     <string name="day_tue">M</string>
     <string name="day_view">Día</string>
     <string name="day_wed">X</string>
+    <string name="days">Días</string>
     <string name="def_view">Vista predeterminada</string>
     <string name="del">Eliminar</string>
     <string name="del_confirm_warning_header">Confirmar eliminación</string>
@@ -83,7 +84,8 @@
     <string name="month_view">Mes</string>
     <string name="morning">Mañana</string>
     <string name="msg">Hola, te recuerdo tu cita.</string>
-    <string name="msg2">Hola, te recuerdo tu cita el {fecha} a las {hora}.</string>
+    <string name="msg2">Tu próxima cita es el {fecha} a las {hora}.</string>
+    <string name="msg_exp">Hola, te recuerdo tu cita el {fecha} a las {hora}.</string>
     <string name="name">Nombre</string>
     <string name="new_ver">¡Nueva versión disponible: %s!</string>
     <string name="next">Siguiente</string>
@@ -104,7 +106,8 @@
     <string name="range">Rango horario</string>
     <string name="range_config">Configurar Rango Horario</string>
     <string name="refresh">Actualizar</string>
-    <string name="rem_msg">Mensaje de recordatorio</string>
+    <string name="rem_msg_1">Mensaje de recordatorio 1</string>
+    <string name="rem_msg_2">Mensaje de recordatorio 2</string>
     <string name="rem_msg_edit">Editar mensaje de recordatorio</string>
     <string name="rem_send">Enviar recordatorio</string>
     <string name="reminder">Recordatorio</string>
@@ -120,6 +123,12 @@
     <string name="start">Inicio</string>
     <string name="stored_mail_warning">Nota: El contacto debe tener un correo guardado.</string>
     <string name="system_mode">Sistema</string>
+    <string name="time_until">Tiempo hasta la cita</string>
+    <string name="time_until_msg">Enviar el mensaje 2 si faltan tantos días para la cita.</string>
+    <plurals name="time_until_msg_pv">
+        <item quantity="one">Enviar el mensaje 2 si falta %1$d día para la cita.</item>
+        <item quantity="other" tools:ignore="MissingQuantity">Enviar el mensaje 2 si faltan %1$d días para la cita.</item>
+    </plurals>
     <string name="today">Hoy</string>
     <string name="visual_custom">Personalización Visual</string>
     <string name="week_view">Semana</string>

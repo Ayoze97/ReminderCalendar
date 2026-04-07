@@ -2,17 +2,13 @@ package com.remindercalendar
 
 import android.app.Application
 import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
 import android.os.Environment
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.FileProvider
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -22,13 +18,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 
 enum class DarkModeConfig { LIGHT, DARK, SYSTEM }
 
@@ -50,8 +49,6 @@ class SettingsViewModel(
         _highlightCalendarOption.value = highlight
     }
 
-    // --- ID CALENDARIO PARA NUEVOS EVENTOS ---
-    // Ahora lo exponemos como un StateFlow que viene del Manager para que sea persistente
     val selectedCalendarId: StateFlow<Long?> = settingsManager.selectedCalendarIdFlow
         .stateIn(
             scope = viewModelScope,
@@ -65,7 +62,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- MODO OSCURO ---
     val darkMode: StateFlow<DarkModeConfig> = settingsManager.darkModeFlow
         .stateIn(
             scope = viewModelScope,
@@ -80,7 +76,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- NOMBRE CALENDARIO ---
     val calendarName: StateFlow<String> = settingsManager.calendarNameFlow
         .stateIn(
             scope = viewModelScope,
@@ -107,7 +102,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- COLOR ENCABEZADO (HEADER) ---
     val headerColor: StateFlow<Color> = settingsManager.headerColorFlow
         .stateIn(
             scope = viewModelScope,
@@ -127,7 +121,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- COLOR BOTONES ---
     val buttonsColor: StateFlow<Color> = settingsManager.buttonsColorFlow
         .stateIn(
             scope = viewModelScope,
@@ -146,7 +139,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- COLOR DÍA ACTUAL (CÍRCULO) ---
     val currentDayColor: StateFlow<Color> = settingsManager.currentDayColorFlow
         .stateIn(
             scope = viewModelScope,
@@ -160,7 +152,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- TEXTO ENCABEZADO ---
     val headerTextColor: StateFlow<Color> = settingsManager.headerTextColorFlow
         .stateIn(
             scope = viewModelScope,
@@ -175,7 +166,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- TEXTO BOTONES ---
     val buttonsTextColor: StateFlow<Color> = settingsManager.buttonsTextColorFlow
         .stateIn(
             scope = viewModelScope,
@@ -189,7 +179,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- RANGOS HORARIOS ---
     val timeRanges: StateFlow<List<TimeRange>> = settingsManager.timeRangesFlow
         .stateIn(
             scope = viewModelScope,
@@ -206,21 +195,51 @@ class SettingsViewModel(
         }
     }
 
-    // --- MENSAJE RECORDATORIO ---
     val reminderMessage: StateFlow<String> = settingsManager.reminderMessageFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = context.getString(R.string.msg_exp)
+        )
+
+    val reminderMessage2: StateFlow<String> = settingsManager.reminderMessageFlow2
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = context.getString(R.string.msg2)
         )
 
-    val isDateFormatNeeded: StateFlow<Boolean> = reminderMessage
-        .map { it.contains(context.getString(R.string.inserted_date)) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = true
-        )
+    val isDateFormatNeeded: StateFlow<Boolean> = combine(
+        reminderMessage,
+        reminderMessage2
+    ) { msg1, msg2 ->
+        val tag = context.getString(R.string.inserted_date)
+        msg1.contains(tag) || msg2.contains(tag)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = true
+    )
+
+    val daysThreshold: StateFlow<Int> = settingsManager.reminderDaysThresholdFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 7)
+
+    fun getReminderMessageFiltered(eventDate: LocalDate): String {
+        val hoy = LocalDate.now()
+        val diasRestantes = ChronoUnit.DAYS.between(hoy, eventDate)
+
+        return if (diasRestantes >= daysThreshold.value) {
+            reminderMessage2.value
+        } else {
+            reminderMessage.value
+        }
+    }
+
+    fun setReminderDaysThreshold(days: Int) {
+        viewModelScope.launch {
+            settingsManager.setReminderDaysThreshold(days)
+        }
+    }
 
     fun setReminderMessage(message: String) {
         viewModelScope.launch {
@@ -228,7 +247,12 @@ class SettingsViewModel(
         }
     }
 
-    // --- FORMATO DE FECHA ---
+    fun setReminderMessage2(message: String) {
+        viewModelScope.launch {
+            settingsManager.setReminderMessage2(message)
+        }
+    }
+
     val dateFormat: StateFlow<String> = settingsManager.dateFormatFlow
         .stateIn(
             scope = viewModelScope,
@@ -255,7 +279,6 @@ class SettingsViewModel(
         }
     }
 
-    // --- GESTIÓN DE CALENDARIOS DISPONIBLES ---
     private val _availableCalendars = MutableStateFlow<List<CalendarAccount>>(emptyList())
     val availableCalendars: StateFlow<List<CalendarAccount>> = _availableCalendars
 
@@ -269,11 +292,8 @@ class SettingsViewModel(
 
     fun selectPrimaryCalendar(id: String) {
         viewModelScope.launch {
-            // 1. Guardamos el ID para escribir (el Long)
             settingsManager.saveSelectedCalendarId(id.toLongOrNull())
 
-            // 2. Guardamos el ID para leer (el Set con un solo elemento)
-            // Esto mantendrá la compatibilidad con tu lógica actual de lectura
             settingsManager.clearAndSetSingleCalendar(id)
         }
     }

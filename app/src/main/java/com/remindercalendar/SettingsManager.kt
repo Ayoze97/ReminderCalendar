@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -32,12 +33,14 @@ class SettingsManager(val context: Context) {
         val BUTTONS_TEXT_COLOR_KEY = longPreferencesKey("buttons_text_color")
         val TIME_RANGES_KEY = stringSetPreferencesKey("time_ranges")
         val REMINDER_MESSAGE_KEY = stringPreferencesKey("reminder_message")
+        val REMINDER_MESSAGE_KEY_2 = stringPreferencesKey("reminder_message_2")
         val DATE_FORMAT_KEY = stringPreferencesKey("date_format")
         val PREFERRED_SEND_METHOD_KEY = stringPreferencesKey("preferred_send_method")
         val DARK_MODE_KEY = stringPreferencesKey("dark_mode")
         private val DEFAULT_VIEW_KEY = stringPreferencesKey("default_view")
         private val SELECTED_CALENDARS_KEY = stringSetPreferencesKey("selected_calendars")
         private val SELECTED_CALENDAR_ID = longPreferencesKey("selected_calendar_id")
+        val REMINDER_DAYS_THRESHOLD_KEY = intPreferencesKey("reminder_days_threshold")
     }
 
     val selectedCalendarsFlow: Flow<Set<String>> = dataStore.data.map { preferences ->
@@ -52,8 +55,6 @@ class SettingsManager(val context: Context) {
         }
     }
 
-    // --- FUNCIÓN CLAVE PARA EVITAR EL PARPADEO ---
-    // Esta función lee el valor actual de forma bloqueante SOLO para la inicialización
     private fun <T> readSync(key: Preferences.Key<T>, default: T): T {
         return runBlocking {
             dataStore.data.map { it[key] }.first() ?: default
@@ -97,7 +98,6 @@ class SettingsManager(val context: Context) {
         return readSync(CALENDAR_NAME_KEY, context.getString(R.string.cal_name_sel))
     }
 
-    // El Flow que escuchará el ViewModel
     val selectedCalendarIdFlow: Flow<Long?> = dataStore.data.map { preferences ->
         preferences[SELECTED_CALENDAR_ID]
     }
@@ -112,7 +112,6 @@ class SettingsManager(val context: Context) {
         dataStore.data.map { it[SELECTED_CALENDAR_ID] }.first()
     }
 
-    // 4. Función para guardar o borrar el ID
     suspend fun saveSelectedCalendarId(id: Long?) {
         dataStore.edit { preferences ->
             if (id != null) {
@@ -123,7 +122,6 @@ class SettingsManager(val context: Context) {
         }
     }
 
-    // --- MODO OSCURO ---
     val darkModeFlow: Flow<DarkModeConfig> = dataStore.data.map { preferences ->
         val name = preferences[DARK_MODE_KEY] ?: DarkModeConfig.SYSTEM.name
         try { DarkModeConfig.valueOf(name) } catch (e: Exception) { DarkModeConfig.SYSTEM }
@@ -133,7 +131,6 @@ class SettingsManager(val context: Context) {
         dataStore.edit { it[DARK_MODE_KEY] = config.name }
     }
 
-    // --- CALENDARIO ---
     val calendarNameFlow: Flow<String> = dataStore.data.map {
         it[CALENDAR_NAME_KEY] ?: context.getString(R.string.cal_name_sel)
     }
@@ -154,7 +151,6 @@ class SettingsManager(val context: Context) {
         }
     }
 
-    // --- COLORES ---
     val headerColorFlow: Flow<Color> = dataStore.data.map {
         val colorLong = it[HEADER_COLOR_KEY] ?: Color.Blue.toArgb().toLong()
         Color(colorLong.toInt())
@@ -200,7 +196,6 @@ class SettingsManager(val context: Context) {
         dataStore.edit { it[BUTTONS_TEXT_COLOR_KEY] = color.toArgb().toLong() }
     }
 
-    // --- TIEMPOS ---
     val timeRangesFlow: Flow<List<TimeRange>> = dataStore.data.map {
         val defaultRanges = listOf(
             TimeRange(LocalTime.of(7, 0), LocalTime.of(13, 0)),
@@ -230,13 +225,28 @@ class SettingsManager(val context: Context) {
         }
     }
 
-    // --- MENSAJES Y FORMATOS ---
     val reminderMessageFlow: Flow<String> = dataStore.data.map {
         it[REMINDER_MESSAGE_KEY] ?: context.getString(R.string.msg)
     }
 
     suspend fun setReminderMessage(message: String) {
         dataStore.edit { it[REMINDER_MESSAGE_KEY] = message }
+    }
+
+    val reminderMessageFlow2: Flow<String> = dataStore.data.map {
+        it[REMINDER_MESSAGE_KEY_2] ?: context.getString(R.string.msg2)
+    }
+
+    suspend fun setReminderMessage2(message: String) {
+        dataStore.edit { it[REMINDER_MESSAGE_KEY_2] = message }
+    }
+
+    val reminderDaysThresholdFlow: Flow<Int> = dataStore.data.map {
+        it[REMINDER_DAYS_THRESHOLD_KEY] ?: 7
+    }
+
+    suspend fun setReminderDaysThreshold(days: Int) {
+        dataStore.edit { it[REMINDER_DAYS_THRESHOLD_KEY] = days }
     }
 
     val dateFormatFlow: Flow<String> = dataStore.data.map {

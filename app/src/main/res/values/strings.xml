@@ -37,6 +37,7 @@
     <string name="day_tue">T</string>
     <string name="day_view">Day</string>
     <string name="day_wed">W</string>
+    <string name="days">Days</string>
     <string name="def_view">Default view</string>
     <string name="del">Delete</string>
     <string name="del_confirm_warning_header">Confirm deletion</string>
@@ -83,7 +84,8 @@
     <string name="month_view">Month</string>
     <string name="morning">Morning</string>
     <string name="msg">Hi, I\'m reminding of your appointment.</string>
-    <string name="msg2">Hi, I\'m reminding of your appointment on {date} at {time}.</string>
+    <string name="msg2">Your next appointment is on {date} at {time}.</string>
+    <string name="msg_exp">Hi, I\'m reminding of your appointment on {date} at {time}.</string>
     <string name="name">Name</string>
     <string name="new_ver">New version available: %s!</string>
     <string name="next">Next</string>
@@ -104,7 +106,8 @@
     <string name="range">Time range</string>
     <string name="range_config">Configure Time Range</string>
     <string name="refresh">Refresh</string>
-    <string name="rem_msg">Reminder message</string>
+    <string name="rem_msg_1">Reminder message 1</string>
+    <string name="rem_msg_2">Reminder message 2</string>
     <string name="rem_msg_edit">Edit reminder message</string>
     <string name="rem_send">Send reminder</string>
     <string name="reminder">Reminder</string>
@@ -120,6 +123,12 @@
     <string name="start">Start</string>
     <string name="stored_mail_warning">Note: The contact must have a saved email.</string>
     <string name="system_mode">System</string>
+    <string name="time_until">Time until appointment</string>
+    <string name="time_until_msg">Send message 2 if there are this many days until the appointment.</string>
+    <plurals name="time_until_msg_pv">
+        <item quantity="one">Send message 2 if there is %1$d day until the appointment.</item>
+        <item quantity="other">Send message 2 if there are %1$d days until the appointment.</item>
+    </plurals>
     <string name="today">Today</string>
     <string name="visual_custom">Visual Customization</string>
     <string name="week_view">Week</string>
