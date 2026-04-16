@@ -134,4 +134,6 @@
     <string name="week_view">Semana</string>
     <string name="accessibility_description">Permite a la aplicación automatizar el clic en el botón de enviar en la aplicación preferida para mandar tus recordatorios de forma rápida.</string>
     <string name="allow_mass_rem">Permitir envío masivo de recordatorios</string>
+    <string name="down_ins">Descargar e instalar</string>
+    <string name="downloading">Descargando...</string>
 </resources>

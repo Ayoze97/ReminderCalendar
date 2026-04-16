@@ -134,4 +134,6 @@
     <string name="week_view">Week</string>
     <string name="accessibility_description">Allows the app to automate clicking the send button on the preferred app to send your reminders quickly.</string>
     <string name="allow_mass_rem">Allow mass sending of reminders</string>
+    <string name="down_ins">Download and install</string>
+    <string name="downloading">Downloading...</string>
 </resources>

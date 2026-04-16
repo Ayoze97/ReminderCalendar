@@ -1,6 +1,7 @@
 package com.remindercalendar
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
@@ -149,6 +150,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import androidx.core.net.toUri
 
 enum class CalendarView {
     MONTH, WEEK, DAY
@@ -1034,6 +1036,7 @@ fun DeleteConfirmationDialog(
     )
 }
 
+@SuppressLint("UseKtx")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -1843,9 +1846,12 @@ fun SettingsScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
+                            val downloading = stringResource(R.string.downloading)
+
                             Button(
                                 onClick = {
                                     settingsViewModel.downloadAndInstallApk(status.url)
+                                    Toast.makeText(context,downloading, Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = buttonsColor,
@@ -1855,12 +1861,12 @@ fun SettingsScreen(
                             ) {
                                 Icon(Icons.Default.Download, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Descargar e Instalar")
+                                Text(stringResource(R.string.down_ins))
                             }
 
                             TextButton(onClick = {
                                 try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(status.url))
+                                    val intent = Intent(Intent.ACTION_VIEW, status.url.toUri())
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
 

@@ -30,6 +30,7 @@ import java.net.URL
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
+import androidx.core.net.toUri
 
 enum class DarkModeConfig { LIGHT, DARK, SYSTEM }
 
@@ -369,7 +370,7 @@ class SettingsViewModel(
     val fileName = "ReminderCalendar_Update.apk"
 
     fun downloadAndInstallApk(apkUrl: String) {
-        val request = DownloadManager.Request(Uri.parse(apkUrl))
+        val request = DownloadManager.Request(apkUrl.toUri())
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
             .setAllowedOverMetered(true)
