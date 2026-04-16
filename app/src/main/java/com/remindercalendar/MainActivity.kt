@@ -1115,8 +1115,19 @@ fun SettingsScreen(
         label = "Highlighter"
     )
 
-    val isServiceActuallyEnabled = remember(batchSendingEnabled) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isServiceActuallyEnabled = remember(batchSendingEnabled) {
         settingsViewModel.isAccessibilityServiceEnabled(context)
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // Refrescamos la comprobación real
+                isServiceActuallyEnabled = settingsViewModel.isAccessibilityServiceEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(forceOpen) {
@@ -1485,7 +1496,19 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 24.dp)
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 8.dp)
+                    .clickable {
+                        val nextState = !batchSendingEnabled
+                        onBatchSendingChange(nextState)
+
+                        // Si el usuario intenta encenderlo y el permiso no está dado
+                        if (nextState && !isServiceActuallyEnabled) {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(intent)
+                        }
+                    },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -1505,7 +1528,7 @@ fun SettingsScreen(
                 Switch(
                     checked = batchSendingEnabled && isServiceActuallyEnabled,
                     onCheckedChange = { isChecked ->
-                        onBatchSendingChange(isChecked)
+
                         if (isChecked) {
 
                             onBatchSendingChange(true)
@@ -1516,6 +1539,8 @@ fun SettingsScreen(
                                 }
                                 context.startActivity(intent)
                             }
+                        } else {
+                            onBatchSendingChange(false)
                         }
                     }
                 )
