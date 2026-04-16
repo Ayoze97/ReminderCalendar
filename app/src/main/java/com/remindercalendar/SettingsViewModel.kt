@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.provider.Settings
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.FileProvider
@@ -13,6 +14,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.remindercalendar.services.WhatsAppAutomationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -416,6 +418,34 @@ class SettingsViewModel(
                 android.util.Log.d("DEBUG_CLEANUP", "Borrando archivo antiguo: ${file.name} -> $result")
             }
         }
+    }
+
+    val batchSendingEnabled: StateFlow<Boolean> = settingsManager.batchSendingEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    fun setBatchSendingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveBatchSendingEnabled(enabled)
+        }
+    }
+    fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val accessibilityEnabled = Settings.Secure.getInt(
+            context.contentResolver,
+            Settings.Secure.ACCESSIBILITY_ENABLED, 0
+        )
+        if (accessibilityEnabled == 1) {
+            val service = "${context.packageName}/${WhatsAppAutomationService::class.java.canonicalName}"
+            val settingValue = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )
+            return settingValue?.contains(service) == true
+        }
+        return false
     }
 }
 

@@ -90,7 +90,7 @@
     <string name="new_ver">New version available: %s!</string>
     <string name="next">Next</string>
     <string name="next_year">Next year</string>
-    <string name="no_event">There are no events</string>
+    <string name="no_event">There are no events to send</string>
     <string name="no_events">There are no events</string>
     <string name="nº_result">Results (%1$d)</string>
     <string name="open_browser">Open in browser</string>
@@ -132,4 +132,6 @@
     <string name="today">Today</string>
     <string name="visual_custom">Visual Customization</string>
     <string name="week_view">Week</string>
+    <string name="accessibility_description">Allows the app to automate clicking the send button on the preferred app to send your reminders quickly.</string>
+    <string name="allow_mass_rem">Allow mass sending of reminders</string>
 </resources>

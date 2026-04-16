@@ -90,7 +90,7 @@
     <string name="new_ver">¡Nueva versión disponible: %s!</string>
     <string name="next">Siguiente</string>
     <string name="next_year">Año siguiente</string>
-    <string name="no_event">No hay eventos</string>
+    <string name="no_event">No hay eventos que enviar</string>
     <string name="no_events">No hay eventos</string>
     <string name="nº_result">Resultados (%1$d)</string>
     <string name="open_browser">Abrir en navegador</string>
@@ -132,4 +132,6 @@
     <string name="today">Hoy</string>
     <string name="visual_custom">Personalización Visual</string>
     <string name="week_view">Semana</string>
+    <string name="accessibility_description">Permite a la aplicación automatizar el clic en el botón de enviar en la aplicación preferida para mandar tus recordatorios de forma rápida.</string>
+    <string name="allow_mass_rem">Permitir envío masivo de recordatorios</string>
 </resources>

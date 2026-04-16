@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -41,6 +42,7 @@ class SettingsManager(val context: Context) {
         private val SELECTED_CALENDARS_KEY = stringSetPreferencesKey("selected_calendars")
         private val SELECTED_CALENDAR_ID = longPreferencesKey("selected_calendar_id")
         val REMINDER_DAYS_THRESHOLD_KEY = intPreferencesKey("reminder_days_threshold")
+        private val BATCH_SENDING_KEY = booleanPreferencesKey("batch_sending_enabled")
     }
 
     val selectedCalendarsFlow: Flow<Set<String>> = dataStore.data.map { preferences ->
@@ -268,4 +270,14 @@ class SettingsManager(val context: Context) {
         }
     }
 
+    val batchSendingEnabled: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[BATCH_SENDING_KEY] ?: false
+        }
+
+    suspend fun saveBatchSendingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[BATCH_SENDING_KEY] = enabled
+        }
+    }
 }

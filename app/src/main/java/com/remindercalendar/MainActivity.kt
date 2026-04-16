@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.provider.Settings
 import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -97,6 +99,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -104,6 +107,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -130,8 +134,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.remindercalendar.services.AutomationBridge
 import com.remindercalendar.ui.theme.ReminderCalendarTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -254,6 +262,9 @@ fun MainApp() {
         DarkModeConfig.DARK -> true
         DarkModeConfig.SYSTEM -> isSystemInDarkTheme()
     }
+
+    val batchSendingEnabled by settingsViewModel.batchSendingEnabled.collectAsState()
+
     ReminderCalendarTheme(darkTheme = useDarkTheme) {
         val activity = LocalActivity.current
         if (activity != null) {
@@ -270,6 +281,28 @@ fun MainApp() {
                 controller.isAppearanceLightStatusBars = !useDarkTheme && headerTextColor == Color.Black
             }
         }
+
+        // Esto detecta cuando vuelves a la App para continuar enviando mensajes
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME && AutomationBridge.isRunning) {
+                    // La app ha vuelto a ser visible, lanzamos el siguiente si existe
+                    val next = AutomationBridge.getNext()
+                    if (next != null) {
+                        val intent =
+                            preferredSendMethod.intentBuilder(next.second, next.first, "", "")
+                        context.startActivity(intent)
+                    } else {
+                        Toast.makeText(context, "¡Todos los mensajes enviados!", Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
 
         Surface(color = MaterialTheme.colorScheme.background) {
             when (currentScreen) {
@@ -352,6 +385,8 @@ fun MainApp() {
                         onDarkModeChange = { settingsViewModel.setDarkMode(it) },
                         settingsViewModel = settingsViewModel,
                         onSettingsViewChange = { currentScreen = it },
+                        onBatchSendingChange = { settingsViewModel.setBatchSendingEnabled(it) },
+                        batchSendingEnabled = batchSendingEnabled,
                         onBack = { currentScreen = Screen.CALENDAR }
                     )
                 }
@@ -419,6 +454,8 @@ fun CalendarScreen(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    val batchSendingEnabled by settingsViewModel.batchSendingEnabled.collectAsState()
 
     if (editingEvent != null || showEventDialogForTime != null) {
         EventDialog(
@@ -715,6 +752,57 @@ fun CalendarScreen(
                     }
                     Spacer(modifier = Modifier.weight(1f))
 
+                    val eventsForSelectedDate = remember(events, fechaSeleccionada) {
+                        events.filter { it.date == fechaSeleccionada }
+                    }
+                    val formatter = DateTimeFormatter.ofPattern("HH:mm")
+                    val insertedDate = stringResource(R.string.inserted_date)
+                    val insertedTime = stringResource(R.string.inserted_time)
+                    val isServiceEnabled = settingsViewModel.isAccessibilityServiceEnabled(context)
+                    val noEvent = stringResource(R.string.no_event)
+
+                    if (batchSendingEnabled && isServiceEnabled) {
+                        IconButton(
+                            onClick = {
+
+                                if (eventsForSelectedDate.isNotEmpty()) {
+                                    val listToSend = eventsForSelectedDate.map { event ->
+                                        val msg = getReminderMessageFiltered(event.date)
+                                            .replace(
+                                                insertedDate,
+                                                event.date.format(
+                                                    DateTimeFormatter.ofPattern(dateFormat)
+                                                )
+                                            )
+                                            .replace(insertedTime, event.time.format(formatter))
+
+                                        event.phone to msg
+                                    }
+                                    AutomationBridge.startQueue(listToSend)
+
+                                    val first = AutomationBridge.getNext()
+                                    if (first != null) {
+                                        val intent = preferredSendMethod.intentBuilder(
+                                            first.second,
+                                            first.first,
+                                            "",
+                                            ""
+                                        )
+                                        context.startActivity(intent)
+                                    }
+                                } else {
+                                    Toast.makeText(context, noEvent, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsActive,
+                                contentDescription = null,
+                                tint = buttonsTextColor,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = {
                             showSearchDialog = true
@@ -977,6 +1065,8 @@ fun SettingsScreen(
     onDarkModeChange: (DarkModeConfig) -> Unit,
     settingsViewModel: SettingsViewModel,
     onSettingsViewChange: (Screen) -> Unit,
+    onBatchSendingChange: (Boolean) -> Unit,
+    batchSendingEnabled: Boolean,
     onBack: () -> Unit
 ) {
 
@@ -1021,6 +1111,10 @@ fun SettingsScreen(
         animationSpec = tween(durationMillis = 500),
         label = "Highlighter"
     )
+
+    val isServiceActuallyEnabled = remember(batchSendingEnabled) {
+        settingsViewModel.isAccessibilityServiceEnabled(context)
+    }
 
     LaunchedEffect(forceOpen) {
         if (forceOpen) {
@@ -1383,6 +1477,47 @@ fun SettingsScreen(
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                 )
             }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.allow_mass_rem),
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Switch(
+                    checked = batchSendingEnabled && isServiceActuallyEnabled,
+                    onCheckedChange = { isChecked ->
+                        onBatchSendingChange(isChecked)
+                        if (isChecked) {
+
+                            onBatchSendingChange(true)
+
+                            if (!isServiceActuallyEnabled) {
+                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            }
+                        }
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
